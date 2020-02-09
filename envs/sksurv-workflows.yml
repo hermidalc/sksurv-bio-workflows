@@ -4,6 +4,10 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  - bioconductor-affy
+  - bioconductor-affyio
+  - bioconductor-affyplm
+  - bioconductor-sva
   - eli5
   - joblib>=0.14
   - libopenblas
@@ -15,7 +19,13 @@ dependencies:
   - python
   - r-base
   - r-essentials
+  - r-fnn
+  - r-lme4
+  - r-minqa
+  - r-mnormt
+  - r-nloptr
   - rpy2=3.1
+  - scikit-learn<=0.22.1
   - scikit-survival
   - seaborn
   - tabulate
