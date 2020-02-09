@@ -1,0 +1,22 @@
+name: sksurv-workflows
+channels:
+  - sebp
+  - conda-forge
+  - bioconda
+dependencies:
+  - eli5
+  - joblib>=0.14
+  - libblas=*=*mkl
+  - libopenblas
+  - matplotlib
+  - natsort
+  - numpy
+  - pandas
+  - pillow
+  - python
+  - r-base
+  - r-essentials
+  - rpy2=3.1
+  - scikit-survival
+  - seaborn
+  - tabulate
