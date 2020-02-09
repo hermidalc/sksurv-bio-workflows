@@ -1,6 +1,6 @@
 [submodule "sklearn_extensions"]
-    path = sklearn_extensions
-    url = git@github.com:ruppinlab/sklearn-extensions.git
+	path = sklearn_extensions
+	url = git@github.com:ruppinlab/sklearn-extensions.git
 [submodule "sksurv_extensions"]
-    path = sksurv_extensions
-    url = git@github.com:ruppinlab/sksurv-extensions.git
+	path = sksurv_extensions
+	url = git@github.com:ruppinlab/sksurv-extensions.git
