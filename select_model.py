@@ -34,53 +34,40 @@ from rpy2.robjects import numpy2ri, pandas2ri
 warnings.filterwarnings('ignore', category=FutureWarning,
                         module='rpy2.robjects.pandas2ri')
 from rpy2.robjects.packages import importr
-from sklearn.base import (BaseEstimator, ClassifierMixin, RegressorMixin,
-                          TransformerMixin)
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
-from sklearn.discriminant_analysis import (
-    LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis)
-from sklearn.ensemble import (
-    AdaBoostClassifier, ExtraTreesClassifier, GradientBoostingClassifier,
-    RandomForestClassifier)
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.feature_selection._base import SelectorMixin
-from sklearn.gaussian_process import GaussianProcessClassifier
-from sklearn.linear_model import LogisticRegression, SGDClassifier
-from sklearn.metrics import (
-    auc, average_precision_score, balanced_accuracy_score,
-    precision_recall_curve, roc_auc_score, roc_curve)
+from sklearn.feature_selection.base import SelectorMixin
 from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import (
     FunctionTransformer, MinMaxScaler, OneHotEncoder, PowerTransformer,
     RobustScaler, StandardScaler)
-from sklearn.svm import LinearSVC, SVC
-from sklearn.tree import DecisionTreeClassifier
+from sksurv.base import SurvivalAnalysisMixin
+from sksurv.linear_model import CoxPHSurvivalAnalysis
+from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
+                            cumulative_dynamic_auc)
+from sksurv.svm import FastSurvivalSVM
+from sksurv.util import Surv
 from tabulate import tabulate
 
 numpy2ri.activate()
 pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
-from sklearn_extensions.ensemble import (
-    CachedExtraTreesClassifier, CachedGradientBoostingClassifier,
-    CachedRandomForestClassifier)
 from sklearn_extensions.feature_selection import (
-    ANOVAFScorerClassification, CachedANOVAFScorerClassification,
-    CachedChi2Scorer, CachedMutualInfoScorerClassification, CFS, Chi2Scorer,
-    ColumnSelector, DESeq2, DreamVoom, EdgeR, EdgeRFilterByExpr, FCBF, Limma,
-    LimmaVoom, MutualInfoScorerClassification, ReliefF, RFE, SelectFromModel,
-    SelectKBest, VarianceThreshold)
+    ColumnSelector, EdgeRFilterByExpr, RFE, SelectKBest)
 from sklearn_extensions.model_selection import (
     ExtendedGridSearchCV, ExtendedRandomizedSearchCV,
     StratifiedGroupShuffleSplit)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
     DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover)
-from sklearn_extensions.svm import CachedLinearSVC
 from sklearn_extensions.utils import _determine_key_type
+from sksurv_extensions.feature_selection import (
+    CachedCoxPHSurvivalScorer, CachedFastSurvivalSVMScorer,
+    CoxPHSurvivalScorer, FastSurvivalSVMScorer)
+from sksurv_extensions.linear_model import CachedCoxPHSurvivalAnalysis
+from sksurv_extensions.svm import CachedFastSurvivalSVM
 
 
 def setup_pipe_and_param_grid(cmd_pipe_steps):
@@ -117,10 +104,8 @@ def setup_pipe_and_param_grid(cmd_pipe_steps):
                     pipe_props['has_selector'] = True
                 elif isinstance(estimator, TransformerMixin):
                     step_type = 'trf'
-                elif isinstance(estimator, ClassifierMixin):
-                    step_type = 'clf'
-                elif isinstance(estimator, RegressorMixin):
-                    step_type = 'rgr'
+                elif isinstance(estimator, SurvivalAnalysisMixin):
+                    step_type = 'srv'
                 else:
                     run_cleanup()
                     raise RuntimeError('Unsupported estimator type {}'
@@ -162,8 +147,6 @@ def setup_pipe_and_param_grid(cmd_pipe_steps):
                     else:
                         pipe_param_routing[uniq_step_name] = (
                             pipe_config[step_key]['param_routing'])
-                if isinstance(estimator, (CFS, FCBF, ReliefF)):
-                    pipe_props['uses_rjava'] = True
                 if step_idx == len(pipe_steps):
                     if len(pipe_step_keys[step_idx]) > 1:
                         pipe_steps.append((uniq_step_name, None))
@@ -271,30 +254,20 @@ def fit_pipeline(X, y, steps, param_routing, params, fit_params):
 
 
 def calculate_test_scores(pipe, X_test, y_test, pipe_predict_params,
+                          y_train=None, test_times=None,
                           test_sample_weights=None):
     scores = {}
-    if hasattr(pipe, 'decision_function'):
-        y_score = pipe.decision_function(X_test, **pipe_predict_params)
-    else:
-        y_score = pipe.predict_proba(X_test, **pipe_predict_params)[:, 1]
+    y_pred = pipe.predict(X_test, **pipe_predict_params)
     for metric in args.scv_scoring:
-        if metric == 'roc_auc':
-            scores[metric] = roc_auc_score(
-                y_test, y_score, sample_weight=test_sample_weights)
-            scores['fpr'], scores['tpr'], _ = roc_curve(
-                y_test, y_score, pos_label=1,
-                sample_weight=test_sample_weights)
-        elif metric == 'balanced_accuracy':
-            y_pred = pipe.predict(X_test, **pipe_predict_params)
-            scores[metric] = balanced_accuracy_score(
-                y_test, y_pred, sample_weight=test_sample_weights)
-        elif metric == 'average_precision':
-            scores[metric] = average_precision_score(
-                y_test, y_score, sample_weight=test_sample_weights)
-            scores['pre'], scores['rec'], _ = precision_recall_curve(
-                y_test, y_score, pos_label=1,
-                sample_weight=test_sample_weights)
-            scores['pr_auc'] = auc(scores['rec'], scores['pre'])
+        if metric == 'concordance_index_censored':
+            scores[metric] = concordance_index_censored(
+                y_test[y_test.dtype.names[0]], y_test[y_test.dtype.names[1]],
+                y_pred)[0]
+        elif metric == 'concordance_index_ipcw':
+            scores[metric] = concordance_index_ipcw(y_train, y_test, y_pred)[0]
+        elif metric == 'cumulative_dynamic_auc':
+            scores[metric] = cumulative_dynamic_auc(y_train, y_test, y_pred,
+                                                    test_times)[1]
     return scores
 
 
@@ -534,8 +507,8 @@ def run_model_selection():
             if param not in search_param_routing['estimator']:
                 search_param_routing['estimator'].append(param)
                 search_param_routing['scoring'].append(param)
-    scv_refit = (args.scv_refit if args.test_dataset
-                 or not pipe_props['uses_rjava'] else False)
+    scv_refit = (True if args.test_dataset or not pipe_props['uses_rjava']
+                 else False)
     if groups is None:
         cv_splitter = StratifiedShuffleSplit(
             n_splits=args.scv_splits, test_size=args.scv_size,
@@ -548,15 +521,14 @@ def run_model_selection():
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=0, n_jobs=args.n_jobs,
             param_grid=param_grid, param_routing=search_param_routing,
-            refit=scv_refit, return_train_score=False,
-            scoring=args.scv_scoring, verbose=args.scv_verbose)
+            refit=scv_refit, return_train_score=False, scoring=None,
+            verbose=args.scv_verbose)
     elif args.scv_type == 'rand':
         search = ExtendedRandomizedSearchCV(
             pipe, cv=cv_splitter, error_score=0, n_iter=args.scv_n_iter,
             n_jobs=args.n_jobs, param_distributions=param_grid,
             param_routing=search_param_routing, refit=scv_refit,
-            return_train_score=False, scoring=args.scv_scoring,
-            verbose=args.scv_verbose)
+            return_train_score=False, scoring=None, verbose=args.scv_verbose)
     if args.verbose > 0:
         print(search.__repr__(N_CHAR_MAX=10000))
         if param_grid_dict:
@@ -637,25 +609,6 @@ def run_model_selection():
             x_axis = range(1, final_feature_meta.shape[0] + 1)
             ax_slr.set_xlim([min(x_axis), max(x_axis)])
             ax_slr.set_xticks(x_axis)
-        # plot roc and pr curves
-        if 'roc_auc' in args.scv_scoring:
-            _, ax_roc = plt.subplots(figsize=(args.fig_width, args.fig_height))
-            ax_roc.set_title('{}\n{}\nROC Curves'.format(
-                dataset_name, pipe_name), fontsize=args.title_font_size)
-            ax_roc.set_xlabel('False Positive Rate',
-                              fontsize=args.axis_font_size)
-            ax_roc.set_ylabel('True Positive Rate',
-                              fontsize=args.axis_font_size)
-            ax_roc.set_xlim([-0.01, 1.01])
-            ax_roc.set_ylim([-0.01, 1.01])
-        if 'average_precision' in args.scv_scoring:
-            _, ax_pre = plt.subplots(figsize=(args.fig_width, args.fig_height))
-            ax_pre.set_title('{}\n{}\nPR Curves'.format(
-                dataset_name, pipe_name), fontsize=args.title_font_size)
-            ax_pre.set_xlabel('Recall', fontsize=args.axis_font_size)
-            ax_pre.set_ylabel('Precision', fontsize=args.axis_font_size)
-            ax_pre.set_xlim([-0.01, 1.01])
-            ax_pre.set_ylim([-0.01, 1.01])
         test_datasets = natsorted(list(
             set(args.test_dataset) - set(args.train_dataset)))
         test_metric_colors = sns.color_palette(
@@ -723,29 +676,6 @@ def run_model_selection():
                 ax_slr.legend(loc='lower right', fontsize='medium')
                 ax_slr.tick_params(labelsize=args.axis_font_size)
                 ax_slr.grid(True, alpha=0.3)
-            if 'roc_auc' in args.scv_scoring:
-                ax_roc.plot(test_scores['fpr'], test_scores['tpr'], alpha=0.8,
-                            color=test_metric_colors[
-                                test_idx * len(args.scv_scoring)], lw=3,
-                            label='{} ROC (AUC = {:.4f})'.format(
-                                test_dataset_name, test_scores['roc_auc']))
-                ax_roc.plot([0, 1], [0, 1], alpha=0.2, color='grey',
-                            linestyle='--', lw=3, label=(
-                                'Chance' if test_idx == len(test_datasets) - 1
-                                else None))
-                ax_roc.legend(loc='lower right', fontsize='medium')
-                ax_roc.tick_params(labelsize=args.axis_font_size)
-                ax_roc.grid(False)
-            if 'average_precision' in args.scv_scoring:
-                ax_pre.step(test_scores['rec'], test_scores['pre'], alpha=0.8,
-                            color=test_metric_colors[
-                                test_idx * len(args.scv_scoring)], lw=3,
-                            label='{} PR (AUC = {:.4f})'.format(
-                                test_dataset_name, test_scores['pr_auc']),
-                            where='post')
-                ax_pre.legend(loc='lower right', fontsize='medium')
-                ax_pre.tick_params(labelsize=args.axis_font_size)
-                ax_pre.grid(False)
     # train-test nested cv
     else:
         split_results = []
@@ -947,87 +877,6 @@ def run_model_selection():
                     floatfmt=feature_mean_meta_floatfmt, headers='keys'))
         plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                               param_cv_scores)
-        # plot roc and pr curves
-        if 'roc_auc' in args.scv_scoring:
-            sns.set_palette(sns.color_palette('hls', 2))
-            plt.figure(figsize=(args.fig_width, args.fig_height))
-            plt.title('{}\n{}\nROC Curve'.format(
-                dataset_name, pipe_name), fontsize=args.title_font_size)
-            plt.xlabel('False Positive Rate', fontsize=args.axis_font_size)
-            plt.ylabel('True Positive Rate', fontsize=args.axis_font_size)
-            plt.xlim([-0.01, 1.01])
-            plt.ylim([-0.01, 1.01])
-            tprs = []
-            mean_fpr = np.linspace(0, 1, 100)
-            for split_result in split_results:
-                tprs.append(np.interp(mean_fpr,
-                                      split_result['scores']['te']['fpr'],
-                                      split_result['scores']['te']['tpr']))
-                tprs[-1][0] = 0.0
-                plt.plot(split_result['scores']['te']['fpr'],
-                         split_result['scores']['te']['tpr'], alpha=0.2,
-                         color='darkgrey', lw=1)
-            mean_tpr = np.mean(tprs, axis=0)
-            mean_tpr[-1] = 1.0
-            mean_roc_auc = np.mean(scores['te']['roc_auc'])
-            std_roc_auc = np.std(scores['te']['roc_auc'])
-            mean_num_features = np.mean(num_features)
-            std_num_features = np.std(num_features)
-            plt.plot(mean_fpr, mean_tpr, lw=3, alpha=0.8, label=(
-                r'Test Mean ROC (AUC = {:.4f} $\pm$ {:.2f}, '
-                r'Features = {:.0f} $\pm$ {:.0f})').format(
-                    mean_roc_auc, std_roc_auc, mean_num_features,
-                    std_num_features))
-            std_tpr = np.std(tprs, axis=0)
-            tprs_upper = np.minimum(mean_tpr + std_tpr, 1)
-            tprs_lower = np.maximum(mean_tpr - std_tpr, 0)
-            plt.fill_between(mean_fpr, tprs_lower, tprs_upper, alpha=0.2,
-                             color='grey', label=r'$\pm$ 1 std. dev.')
-            plt.plot([0, 1], [0, 1], alpha=0.2, color='grey',
-                     linestyle='--', lw=3, label='Chance')
-            plt.legend(loc='lower right', fontsize='medium')
-            plt.tick_params(labelsize=args.axis_font_size)
-            plt.grid(False)
-        if 'average_precision' in args.scv_scoring:
-            sns.set_palette(sns.color_palette('hls', 10))
-            plt.figure(figsize=(args.fig_width, args.fig_height))
-            plt.title('{}\n{}\nPR Curve'.format(
-                dataset_name, pipe_name), fontsize=args.title_font_size)
-            plt.xlabel('Recall', fontsize=args.axis_font_size)
-            plt.ylabel('Precision', fontsize=args.axis_font_size)
-            plt.xlim([-0.01, 1.01])
-            plt.ylim([-0.01, 1.01])
-            pres, scores['te']['pr_auc'] = [], []
-            mean_rec = np.linspace(0, 1, 100)
-            for split_result in split_results:
-                scores['te']['pr_auc'].append(
-                    split_result['scores']['te']['pr_auc'])
-                pres.append(np.interp(mean_rec,
-                                      split_result['scores']['te']['rec'],
-                                      split_result['scores']['te']['pre']))
-                pres[-1][0] = 1.0
-                plt.step(split_result['scores']['te']['rec'],
-                         split_result['scores']['te']['pre'], alpha=0.2,
-                         color='darkgrey', lw=1, where='post')
-            mean_pre = np.mean(pres, axis=0)
-            mean_pre[-1] = 0.0
-            mean_pr_auc = np.mean(scores['te']['pr_auc'])
-            std_pr_auc = np.std(scores['te']['pr_auc'])
-            mean_num_features = np.mean(num_features)
-            std_num_features = np.std(num_features)
-            plt.step(mean_rec, mean_pre, alpha=0.8, lw=3, where='post',
-                     label=(r'Test Mean PR (AUC = {:.4f} $\pm$ {:.2f}, '
-                            r'Features = {:.0f} $\pm$ {:.0f})').format(
-                                mean_pr_auc, std_pr_auc, mean_num_features,
-                                std_num_features))
-            std_pre = np.std(pres, axis=0)
-            pres_upper = np.minimum(mean_pre + std_pre, 1)
-            pres_lower = np.maximum(mean_pre - std_pre, 0)
-            plt.fill_between(mean_rec, pres_lower, pres_upper, alpha=0.2,
-                             color='grey', label=r'$\pm$ 1 std. dev.')
-            plt.legend(loc='lower right', fontsize='medium')
-            plt.tick_params(labelsize=args.axis_font_size)
-            plt.grid(False)
 
 
 def run_cleanup():
@@ -1087,10 +936,6 @@ parser.add_argument('--col-slr-file', type=str, nargs='+',
                     help='ColumnSelector feature or metadata columns file')
 parser.add_argument('--col-slr-meta-col', type=str,
                     help='ColumnSelector feature metadata column name')
-parser.add_argument('--vrt-slr-thres', type=float, nargs='+',
-                    help='VarianceThreshold threshold')
-parser.add_argument('--mui-slr-n', type=int, nargs='+',
-                    help='MutualInfoScorer n neighbors')
 parser.add_argument('--skb-slr-k', type=int, nargs='+',
                     help='SelectKBest k')
 parser.add_argument('--skb-slr-k-min', type=int, default=1,
@@ -1099,78 +944,8 @@ parser.add_argument('--skb-slr-k-max', type=int,
                     help='SelectKBest k max')
 parser.add_argument('--skb-slr-k-step', type=int, default=1,
                     help='SelectKBest k step')
-parser.add_argument('--de-slr-pv', type=float, nargs='+',
-                    help='diff expr slr adj p-value')
-parser.add_argument('--de-slr-fc', type=float, nargs='+',
-                    help='diff expr slr fold change')
 parser.add_argument('--de-slr-mb', type=str_bool, nargs='+',
                     help='diff expr slr model batch')
-parser.add_argument('--sfm-slr-thres', type=float, nargs='+',
-                    help='SelectFromModel threshold')
-parser.add_argument('--sfm-slr-svc-ce', type=int, nargs='+',
-                    help='SelectFromModel LinearSVC C exp')
-parser.add_argument('--sfm-slr-svc-ce-min', type=int,
-                    help='SelectFromModel LinearSVC C exp min')
-parser.add_argument('--sfm-slr-svc-ce-max', type=int,
-                    help='SelectFromModel LinearSVC C exp max')
-parser.add_argument('--sfm-slr-svc-cw', type=str, nargs='+',
-                    help='SelectFromModel LinearSVC class weight')
-parser.add_argument('--sfm-slr-rf-thres', type=float, nargs='+',
-                    help='SelectFromModel rf threshold')
-parser.add_argument('--sfm-slr-rf-e', type=int, nargs='+',
-                    help='SelectFromModel rf n estimators')
-parser.add_argument('--sfm-slr-rf-d', type=str, nargs='+',
-                    help='SelectFromModel rf max depth')
-parser.add_argument('--sfm-slr-rf-f', type=str, nargs='+',
-                    help='SelectFromModel rf max features')
-parser.add_argument('--sfm-slr-rf-cw', type=str, nargs='+',
-                    help='SelectFromModel rf class weight')
-parser.add_argument('--sfm-slr-ext-thres', type=float, nargs='+',
-                    help='SelectFromModel ext threshold')
-parser.add_argument('--sfm-slr-ext-e', type=int, nargs='+',
-                    help='SelectFromModel ext n estimators')
-parser.add_argument('--sfm-slr-ext-d', type=str, nargs='+',
-                    help='SelectFromModel ext max depth')
-parser.add_argument('--sfm-slr-ext-f', type=str, nargs='+',
-                    help='SelectFromModel ext max features')
-parser.add_argument('--sfm-slr-ext-cw', type=str, nargs='+',
-                    help='SelectFromModel ext class weight')
-parser.add_argument('--sfm-slr-grb-e', type=int, nargs='+',
-                    help='SelectFromModel grb n estimators')
-parser.add_argument('--sfm-slr-grb-d', type=int, nargs='+',
-                    help='SelectFromModel grb max depth')
-parser.add_argument('--sfm-slr-grb-f', type=str, nargs='+',
-                    help='SelectFromModel grb max features')
-parser.add_argument('--rfe-slr-svc-ce', type=int, nargs='+',
-                    help='RFE SVC C exp')
-parser.add_argument('--rfe-slr-svc-ce-min', type=int,
-                    help='RFE SVC C exp min')
-parser.add_argument('--rfe-slr-svc-ce-max', type=int,
-                    help='RFE SVC C exp max')
-parser.add_argument('--rfe-slr-svc-cw', type=str, nargs='+',
-                    help='RFE SVC class weight')
-parser.add_argument('--rfe-slr-rf-e', type=int, nargs='+',
-                    help='RFE rf n estimators')
-parser.add_argument('--rfe-slr-rf-d', type=str, nargs='+',
-                    help='RFE rf max depth')
-parser.add_argument('--rfe-slr-rf-f', type=str, nargs='+',
-                    help='RFE rf max features')
-parser.add_argument('--rfe-slr-rf-cw', type=str, nargs='+',
-                    help='RFE rf class weight')
-parser.add_argument('--rfe-slr-ext-e', type=int, nargs='+',
-                    help='RFE ext n estimators')
-parser.add_argument('--rfe-slr-ext-d', type=str, nargs='+',
-                    help='RFE ext max depth')
-parser.add_argument('--rfe-slr-ext-f', type=str, nargs='+',
-                    help='RFE ext max features')
-parser.add_argument('--rfe-slr-ext-cw', type=str, nargs='+',
-                    help='RFE ext class weight')
-parser.add_argument('--rfe-slr-grb-e', type=int, nargs='+',
-                    help='RFE grb n estimators')
-parser.add_argument('--rfe-slr-grb-d', type=int, nargs='+',
-                    help='RFE grb max depth')
-parser.add_argument('--rfe-slr-grb-f', type=str, nargs='+',
-                    help='RFE grb max features')
 parser.add_argument('--rfe-slr-step', type=float, nargs='+',
                     help='RFE step')
 parser.add_argument('--rfe-slr-tune-step-at', type=int,
@@ -1179,10 +954,6 @@ parser.add_argument('--rfe-slr-reducing-step', default=False,
                     action='store_true', help='RFE reducing step')
 parser.add_argument('--rfe-slr-verbose', type=int, default=0,
                     help='RFE verbosity')
-parser.add_argument('--rlf-slr-n', type=int, nargs='+',
-                    help='ReliefF n neighbors')
-parser.add_argument('--rlf-slr-s', type=int, nargs='+',
-                    help='ReliefF sample size')
 parser.add_argument('--mms-trf-feature-range', type=int_list, default=(0, 1),
                     help='MinMaxScaler feature range')
 parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
@@ -1190,113 +961,34 @@ parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
                     help='PowerTransformer meth')
 parser.add_argument('--de-trf-mb', type=str_bool, nargs='+',
                     help='diff expr trf model batch')
-parser.add_argument('--svc-clf-ce', type=int, nargs='+',
-                    help='SVC/LinearSVC C exp')
-parser.add_argument('--svc-clf-ce-min', type=int,
-                    help='SVC/LinearSVC C exp min')
-parser.add_argument('--svc-clf-ce-max', type=int,
-                    help='SVC/LinearSVC C exp max')
-parser.add_argument('--svc-clf-cw', type=str, nargs='+',
-                    help='SVC/LinearSVC class weight')
-parser.add_argument('--svc-clf-kern', type=str, nargs='+',
-                    help='SVC kernel')
-parser.add_argument('--svc-clf-deg', type=int, nargs='+',
-                    help='SVC poly degree')
-parser.add_argument('--svc-clf-g', type=str, nargs='+',
-                    help='SVC gamma')
-parser.add_argument('--lsvc-clf-max-iter', type=int, default=1000,
-                    help='LinearSVC max_iter')
-parser.add_argument('--lsvc-clf-tol', type=float, default=1e-2,
-                    help='LinearSVC tol')
-parser.add_argument('--svc-clf-cache', type=int, default=2000,
-                    help='SVC cache size')
-parser.add_argument('--knn-clf-k', type=int, nargs='+',
-                    help='KNeighborsClassifier neighbors')
-parser.add_argument('--knn-clf-w', type=str, nargs='+',
-                    help='KNeighborsClassifier weights')
-parser.add_argument('--dt-clf-d', type=str, nargs='+',
-                    help='DecisionTreeClassifier max depth')
-parser.add_argument('--dt-clf-f', type=str, nargs='+',
-                    help='DecisionTreeClassifier max features')
-parser.add_argument('--dt-clf-cw', type=str, nargs='+',
-                    help='DecisionTreeClassifier class weight')
-parser.add_argument('--rf-clf-e', type=int, nargs='+',
-                    help='RandomForestClassifier n estimators')
-parser.add_argument('--rf-clf-d', type=str, nargs='+',
-                    help='RandomForestClassifier max depth')
-parser.add_argument('--rf-clf-f', type=str, nargs='+',
-                    help='RandomForestClassifier max features')
-parser.add_argument('--rf-clf-cw', type=str, nargs='+',
-                    help='RandomForestClassifier class weight')
-parser.add_argument('--ext-clf-e', type=int, nargs='+',
-                    help='ExtraTreesClassifier n estimators')
-parser.add_argument('--ext-clf-d', type=str, nargs='+',
-                    help='ExtraTreesClassifier max depth')
-parser.add_argument('--ext-clf-f', type=str, nargs='+',
-                    help='ExtraTreesClassifier max features')
-parser.add_argument('--ext-clf-cw', type=str, nargs='+',
-                    help='ExtraTreesClassifier class weight')
-parser.add_argument('--ada-clf-e', type=int, nargs='+',
-                    help='AdaBoostClassifier n estimators')
-parser.add_argument('--ada-clf-lgr-ce', type=int, nargs='+',
-                    help='AdaBoostClassifier LogisticRegression C exp')
-parser.add_argument('--ada-clf-lgr-ce-min', type=int, nargs='+',
-                    help='AdaBoostClassifier LogisticRegression C exp min')
-parser.add_argument('--ada-clf-lgr-ce-max', type=int, nargs='+',
-                    help='AdaBoostClassifier LogisticRegression C exp max')
-parser.add_argument('--ada-clf-lgr-cw', type=str, nargs='+',
-                    help='AdaBoostClassifier LogisticRegression class weight')
-parser.add_argument('--grb-clf-e', type=int, nargs='+',
-                    help='GradientBoostingClassifier n estimators')
-parser.add_argument('--grb-clf-d', type=int, nargs='+',
-                    help='GradientBoostingClassifier max depth')
-parser.add_argument('--grb-clf-f', type=str, nargs='+',
-                    help='GradientBoostingClassifier max features')
-parser.add_argument('--mlp-clf-hls', type=str, nargs='+',
-                    help='MLPClassifier hidden layer sizes')
-parser.add_argument('--mlp-clf-act', type=str, nargs='+',
-                    help='MLPClassifier activation function')
-parser.add_argument('--mlp-clf-slvr', type=str, nargs='+',
-                    help='MLPClassifier solver')
-parser.add_argument('--mlp-clf-a', type=float, nargs='+',
-                    help='MLPClassifier alpha')
-parser.add_argument('--mlp-clf-lr', type=str, nargs='+',
-                    help='MLPClassifier learning rate')
-parser.add_argument('--sgd-clf-ae', type=int, nargs='+',
-                    help='SGDClassifier alpha exp')
-parser.add_argument('--sgd-clf-ae-min', type=int,
-                    help='SGDClassifier alpha exp min')
-parser.add_argument('--sgd-clf-ae-max', type=int,
-                    help='SGDClassifier alpha exp max')
-parser.add_argument('--sgd-clf-l1r', type=float, nargs='+',
-                    help='SGDClassifier l1 ratio')
-parser.add_argument('--sgd-clf-l1r-min', type=float,
-                    help='SGDClassifier l1 ratio min')
-parser.add_argument('--sgd-clf-l1r-max', type=float,
-                    help='SGDClassifier l1 ratio max')
-parser.add_argument('--sgd-clf-l1r-step', type=float, default=0.05,
-                    help='SGDClassifier l1 ratio step')
-parser.add_argument('--sgd-clf-cw', type=str, nargs='+',
-                    help='SGDClassifier class weight')
-parser.add_argument('--sgd-clf-loss', type=str, nargs='+',
-                    choices=['hinge', 'log', 'modified_huber', 'squared_hinge',
-                             'perceptron', 'squared_loss', 'huber',
-                             'epsilon_insensitive',
-                             'squared_epsilon_insensitive'],
-                    help='SGDClassifier loss')
-parser.add_argument('--sgd-clf-penalty', type=str,
-                    choices=['l1', 'l2', 'elasticnet'], default='l2',
-                    help='SGDClassifier penalty')
-parser.add_argument('--sgd-clf-max-iter', type=int, default=1000,
-                    help='SGDClassifier max_iter')
+parser.add_argument('--cph-srv-ae', type=int, nargs='+',
+                    help='CoxPHSurvivalAnalysis alpha exp')
+parser.add_argument('--cph-srv-ae-min', type=int,
+                    help='CoxPHSurvivalAnalysis alpha exp min')
+parser.add_argument('--cph-srv-ae-max', type=int,
+                    help='CoxPHSurvivalAnalysis alpha exp max')
+parser.add_argument('--cph-srv-ties', type=str, default='breslow',
+                    help='CoxPHSurvivalAnalysis ties')
+parser.add_argument('--cph-srv-n-iter', type=int, default=100,
+                    help='CoxPHSurvivalAnalysis n_iter')
+parser.add_argument('--fsvm-srv-a', type=int, nargs='+',
+                    help='FastSurvivalSVM c')
+parser.add_argument('--fsvm-srv-ae-min', type=int,
+                    help='FastSurvivalSVM c min')
+parser.add_argument('--fsvm-srv-ae-max', type=int,
+                    help='FastSurvivalSVM alpha exp max')
+parser.add_argument('--fsvm-srv-rr', type=float, nargs='+',
+                    help='FastSurvivalSVM rank_ratio')
+parser.add_argument('--fsvm-srv-rr-min', type=float,
+                    help='FastSurvivalSVM rank_ratio min')
+parser.add_argument('--fsvm-srv-rr-max', type=float,
+                    help='FastSurvivalSVM rank_ratio max')
+parser.add_argument('--fsvm-srv-rr-step', type=float, default=0.05,
+                    help='FastSurvivalSVM rank_ratio step')
+parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
+                    help='FastSurvivalSVM max_iter')
 parser.add_argument('--edger-prior-count', type=int, default=1,
                     help='edger prior count')
-parser.add_argument('--limma-robust', default=False, action='store_true',
-                    help='limma robust')
-parser.add_argument('--limma-trend', default=False, action='store_true',
-                    help='limma trend')
-parser.add_argument('--limma-model-dupcor', default=False, action='store_true',
-                    help='limma model dupcor')
 parser.add_argument('--scv-type', type=str,
                     choices=['grid', 'rand'], default='grid',
                     help='scv type')
@@ -1307,14 +999,17 @@ parser.add_argument('--scv-size', type=float, default=0.2,
 parser.add_argument('--scv-verbose', type=int,
                     help='scv verbosity')
 parser.add_argument('--scv-scoring', type=str, nargs='+',
-                    choices=['roc_auc', 'balanced_accuracy',
-                             'average_precision'],
-                    default=['roc_auc', 'balanced_accuracy'],
+                    choices=['concordance_index_censored',
+                             'concordance_index_ipcw',
+                             'cumulative_dynamic_auc'],
+                    default=['concordance_index_censored',
+                             'concordance_index_ipcw'],
                     help='scv scoring metric')
 parser.add_argument('--scv-refit', type=str,
-                    choices=['roc_auc', 'balanced_accuracy',
-                             'average_precision'],
-                    default='roc_auc',
+                    choices=['concordance_index_censored',
+                             'concordance_index_ipcw',
+                             'cumulative_dynamic_auc'],
+                    default='concordance_index_censored',
                     help='scv refit scoring metric')
 parser.add_argument('--scv-n-iter', type=int, default=100,
                     help='randomized scv num iterations')
@@ -1394,12 +1089,6 @@ if args.filter_warnings:
             warnings.filterwarnings(
                 'ignore', category=UserWarning,
                 message='^Persisting input arguments took')
-        if 'qda' in args.filter_warnings:
-            # filter QDA collinearity warnings
-            warnings.filterwarnings(
-                'ignore', category=UserWarning,
-                message='^Variables are collinear',
-                module='sklearn.discriminant_analysis')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
@@ -1414,10 +1103,6 @@ if args.filter_warnings:
         if 'joblib' in args.filter_warnings:
             python_warnings.append(
                 'ignore:Persisting input arguments took:UserWarning')
-        if 'qda' in args.filter_warnings:
-            python_warnings.append(
-                'ignore:Variables are collinear:'
-                'UserWarning:sklearn.discriminant_analysis')
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
 
@@ -1434,42 +1119,28 @@ robjects.r('options(\'java.parameters\'="-Xmx{:d}m")'
 if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
     memory = Memory(location=cachedir, verbose=0)
-    anova_clf_scorer = CachedANOVAFScorerClassification(memory=memory)
-    chi2_scorer = CachedChi2Scorer(memory=memory)
-    mui_clf_scorer = CachedMutualInfoScorerClassification(
-        memory=memory, random_state=args.random_seed)
-    lsvc_clf = CachedLinearSVC(
-        max_iter=args.lsvc_clf_max_iter, memory=memory,
-        random_state=args.random_seed, tol=args.lsvc_clf_tol)
-    sfm_lsvc_clf = CachedLinearSVC(
-        dual=False, max_iter=args.lsvc_clf_max_iter, memory=memory,
-        penalty='l1', random_state=args.random_seed, tol=args.lsvc_clf_tol)
-    rf_clf = CachedRandomForestClassifier(
-        memory=memory, random_state=args.random_seed)
-    ext_clf = CachedExtraTreesClassifier(
-        memory=memory, random_state=args.random_seed)
-    grb_clf = CachedGradientBoostingClassifier(
-        memory=memory, random_state=args.random_seed)
+    cph_srv_scorer = CachedCoxPHSurvivalScorer(
+        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+    fsvm_srv_scorer = CachedFastSurvivalSVMScorer(
+        memory=memory, max_iter=args.fsvm_srv_max_iter,
+        random_state=args.random_seed)
+    cph_srv = CachedCoxPHSurvivalAnalysis(
+        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+    fsvm_srv = CachedFastSurvivalSVM(
+        memory=memory, max_iter=args.fsvm_srv_max_iter,
+        random_state=args.random_seed)
 else:
     memory = None
-    anova_clf_scorer = ANOVAFScorerClassification()
-    chi2_scorer = Chi2Scorer()
-    mui_clf_scorer = MutualInfoScorerClassification(
-        random_state=args.random_seed)
-    lsvc_clf = LinearSVC(
-        max_iter=args.lsvc_clf_max_iter, random_state=args.random_seed,
-        tol=args.lsvc_clf_tol)
-    sfm_lsvc_clf = LinearSVC(
-        dual=False, max_iter=args.lsvc_clf_max_iter, penalty='l1',
-        random_state=args.random_seed, tol=args.lsvc_clf_tol)
-    rf_clf = RandomForestClassifier(
-        random_state=args.random_seed)
-    ext_clf = ExtraTreesClassifier(
-        random_state=args.random_seed)
-    grb_clf = GradientBoostingClassifier(
-        random_state=args.random_seed)
+    cph_srv_scorer = CoxPHSurvivalScorer(
+        ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+    fsvm_srv_scorer = FastSurvivalSVMScorer(
+        max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)
+    cph_srv = CoxPHSurvivalAnalysis(
+        ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+    fsvm_srv = FastSurvivalSVM(
+        max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)
 
-pipeline_step_types = ('slr', 'trf', 'clf', 'rgr')
+pipeline_step_types = ('slr', 'trf', 'srv')
 cv_params = {k: v for k, v in vars(args).items()
              if '_' in k and k.split('_')[1] in pipeline_step_types}
 if cv_params['col_slr_file']:
@@ -1487,21 +1158,11 @@ if cv_params['col_slr_file']:
                           .format(feature_file))
 for cv_param, cv_param_values in cv_params.copy().items():
     if cv_param_values is None:
-        if cv_param in ('sfm_slr_svc_ce', 'rfe_slr_svc_ce', 'svc_clf_ce',
-                        'ada_clf_lgr_ce', 'sgd_clf_ae'):
+        if cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
             cv_params[cv_param[:-1]] = None
         continue
-    if cv_param in ('col_slr_cols', 'vrt_slr_thres', 'mui_slr_n', 'skb_slr_k',
-                    'de_slr_pv', 'de_slr_fc', 'de_slr_mb', 'sfm_slr_thres',
-                    'sfm_slr_rf_thres', 'sfm_slr_rf_e', 'sfm_slr_ext_thres',
-                    'sfm_slr_ext_e', 'sfm_slr_grb_e', 'sfm_slr_grb_d',
-                    'rfe_slr_rf_e', 'rfe_slr_ext_e', 'rfe_slr_grb_e',
-                    'rfe_slr_grb_d', 'rfe_slr_step', 'rlf_slr_n', 'rlf_slr_s',
-                    'pwr_trf_meth', 'de_trf_mb', 'svc_clf_kern', 'svc_clf_deg',
-                    'svc_clf_g', 'knn_clf_k', 'knn_clf_w', 'rf_clf_e',
-                    'ext_clf_e', 'ada_clf_e', 'grb_clf_e', 'grb_clf_d',
-                    'mlp_clf_hls', 'mlp_clf_act', 'mlp_clf_slvr', 'mlp_clf_a',
-                    'mlp_clf_lr', 'sgd_clf_loss', 'sgd_clf_l1r'):
+    if cv_param in ('col_slr_cols', 'skb_slr_k', 'rfe_slr_step', 'de_slr_mb',
+                    'pwr_trf_meth', 'de_trf_mb', 'fsvm_srv_rr', 'fsvm_srv_o'):
         cv_params[cv_param] = sorted(cv_param_values)
     elif cv_param == 'skb_slr_k_max':
         if cv_params['skb_slr_k_min'] == 1 and cv_params['skb_slr_k_step'] > 1:
@@ -1513,39 +1174,21 @@ for cv_param, cv_param_values in cv_params.copy().items():
                 cv_params['skb_slr_k_min'],
                 cv_params['skb_slr_k_max'] + cv_params['skb_slr_k_step'],
                 cv_params['skb_slr_k_step']))
-    elif cv_param in ('sfm_slr_svc_ce', 'rfe_slr_svc_ce', 'svc_clf_ce',
-                      'ada_clf_lgr_ce', 'sgd_clf_ae'):
-        cv_params[cv_param[:-1]] = 10 ** cv_param_values
-    elif cv_param in ('sfm_slr_svc_ce_max', 'rfe_slr_svc_ce_max',
-                      'svc_clf_ce_max', 'ada_clf_lgr_ce_max',
-                      'sgd_clf_ae_max'):
+    elif cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
+        cv_params[cv_param[:-1]] = 2 ** cv_param_values
+    elif cv_param in ('cph_srv_ae_max', 'fsvm_srv_ae_max'):
         cv_param = '_'.join(cv_param.split('_')[:-1])
         cv_param_v_min = cv_params['{}_min'.format(cv_param)]
         cv_param_v_max = cv_param_values
         cv_params[cv_param[:-1]] = np.logspace(
             cv_param_v_min, cv_param_v_max,
-            cv_param_v_max - cv_param_v_min + 1, base=10)
-    elif cv_param == 'sgd_clf_l1r_max':
-        cv_params['sgd_clf_l1r'] = np.linspace(
-            cv_params['sgd_clf_l1r_min'], cv_params['sgd_clf_l1r_max'],
+            cv_param_v_max - cv_param_v_min + 1, base=2)
+    elif cv_param == 'fsvm_srv_rr_max':
+        cv_params['fsvm_srv_rr'] = np.linspace(
+            cv_params['fsvm_srv_rr_min'], cv_params['fsvm_srv_rr_max'],
             int(np.floor(
-                (cv_params['sgd_clf_l1r_max'] - cv_params['sgd_clf_l1r_min'])
-                / cv_params['sgd_clf_l1r_step'])) + 1)
-    elif cv_param in ('sfm_slr_svc_cw', 'sfm_slr_rf_cw', 'sfm_slr_ext_cw',
-                      'rfe_slr_svc_cw', 'rfe_slr_rf_cw', 'rfe_slr_ext_cw',
-                      'sfm_slr_rf_f', 'sfm_slr_ext_f', 'sfm_slr_grb_f',
-                      'rfe_slr_rf_f', 'rfe_slr_ext_f', 'rfe_slr_grb_f',
-                      'svc_clf_cw', 'dt_clf_f', 'dt_clf_cw', 'rf_clf_f',
-                      'rf_clf_cw', 'ext_clf_f', 'ext_clf_cw', 'ada_clf_lgr_cw',
-                      'grb_clf_f', 'sgd_clf_cw'):
-        cv_params[cv_param] = sorted([None if v.title() == 'None' else v
-                                      for v in cv_param_values],
-                                     key=lambda x: (x is None, x))
-    elif cv_param in ('sfm_slr_rf_d', 'sfm_slr_ext_d', 'rfe_slr_rf_d',
-                      'rfe_slr_ext_d', 'dt_clf_d', 'rf_clf_d', 'ext_clf_d'):
-        cv_params[cv_param] = sorted([None if v.title() == 'None' else int(v)
-                                      for v in cv_param_values],
-                                     key=lambda x: (x is None, x))
+                (cv_params['fsvm_srv_rr_max'] - cv_params['fsvm_srv_rr_min'])
+                / cv_params['fsvm_srv_rr_step'])) + 1)
 
 pipe_config = {
     # feature selectors
@@ -1554,166 +1197,33 @@ pipe_config = {
         'param_grid': {
             'cols': cv_params['col_slr_cols']},
         'param_routing': ['feature_meta']},
-    'VarianceThreshold': {
-        'estimator':  VarianceThreshold(),
-        'param_grid': {
-            'threshold': cv_params['vrt_slr_thres']}},
-    'SelectKBest-ANOVAFScorerClassification': {
-        'estimator': SelectKBest(anova_clf_scorer),
-        'param_grid': {
-            'k': cv_params['skb_slr_k']}},
-    'SelectKBest-Chi2Scorer': {
-        'estimator': SelectKBest(chi2_scorer),
-        'param_grid': {
-            'k': cv_params['skb_slr_k']}},
-    'SelectKBest-MutualInfoScorerClassification': {
-        'estimator': SelectKBest(mui_clf_scorer),
+    'SelectKBest-CoxPHSurvivalAnalysis': {
+        'estimator': SelectKBest(cph_srv_scorer),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
-            'score_func__n_neighbors': cv_params['mui_slr_n']}},
-    'SelectFromModel-LinearSVC': {
-        'estimator': SelectFromModel(sfm_lsvc_clf),
-        'param_grid': {
-            'estimator__C': cv_params['sfm_slr_svc_c'],
-            'estimator__class_weight': cv_params['sfm_slr_svc_cw'],
-            'max_features': cv_params['skb_slr_k'],
-            'threshold': cv_params['sfm_slr_thres']},
-        'param_routing': ['sample_weight']},
-    'SelectFromModel-RandomForestClassifier': {
-        'estimator': SelectFromModel(rf_clf),
-        'param_grid': {
-            'estimator__n_estimators': cv_params['sfm_slr_rf_e'],
-            'estimator__max_depth': cv_params['sfm_slr_rf_d'],
-            'estimator__max_features': cv_params['sfm_slr_rf_f'],
-            'estimator__class_weight': cv_params['sfm_slr_rf_cw'],
-            'max_features': cv_params['skb_slr_k'],
-            'threshold': cv_params['sfm_slr_thres']},
-        'param_routing': ['sample_weight']},
-    'SelectFromModel-ExtraTreesClassifier': {
-        'estimator': SelectFromModel(ext_clf),
-        'param_grid': {
-            'estimator__n_estimators': cv_params['sfm_slr_ext_e'],
-            'estimator__max_depth': cv_params['sfm_slr_ext_d'],
-            'estimator__max_features': cv_params['sfm_slr_ext_f'],
-            'estimator__class_weight': cv_params['sfm_slr_ext_cw'],
-            'max_features': cv_params['skb_slr_k'],
-            'threshold': cv_params['sfm_slr_thres']},
-        'param_routing': ['sample_weight']},
-    'SelectFromModel-GradientBoostingClassifier': {
-        'estimator': SelectFromModel(grb_clf),
-        'param_grid': {
-            'estimator__n_estimators': cv_params['sfm_slr_grb_e'],
-            'estimator__max_depth': cv_params['sfm_slr_grb_d'],
-            'estimator__max_features': cv_params['sfm_slr_grb_f'],
-            'max_features': cv_params['skb_slr_k'],
-            'threshold': cv_params['sfm_slr_thres']},
-        'param_routing': ['sample_weight']},
-    'RFE-LinearSVC': {
-        'estimator': RFE(lsvc_clf, tune_step_at=args.rfe_slr_tune_step_at,
-                         reducing_step=args.rfe_slr_reducing_step,
-                         verbose=args.rfe_slr_verbose),
-        'param_grid': {
-            'estimator__C': cv_params['rfe_slr_svc_c'],
-            'estimator__class_weight': cv_params['rfe_slr_svc_cw'],
-            'step': cv_params['rfe_slr_step'],
-            'n_features_to_select': cv_params['skb_slr_k']},
-        'param_routing': ['sample_weight']},
-    'RFE-RandomForestClassifier': {
-        'estimator': RFE(rf_clf, tune_step_at=args.rfe_slr_tune_step_at,
-                         reducing_step=args.rfe_slr_reducing_step,
-                         verbose=args.rfe_slr_verbose),
-        'param_grid': {
-            'estimator__n_estimators': cv_params['rfe_slr_rf_e'],
-            'estimator__max_depth': cv_params['rfe_slr_rf_d'],
-            'estimator__max_features': cv_params['rfe_slr_rf_f'],
-            'estimator__class_weight': cv_params['rfe_slr_rf_cw'],
-            'step': cv_params['rfe_slr_step'],
-            'n_features_to_select': cv_params['skb_slr_k']},
-        'param_routing': ['sample_weight']},
-    'RFE-ExtraTreesClassifier': {
-        'estimator': RFE(ext_clf, tune_step_at=args.rfe_slr_tune_step_at,
-                         reducing_step=args.rfe_slr_reducing_step,
-                         verbose=args.rfe_slr_verbose),
-        'param_grid': {
-            'estimator__n_estimators': cv_params['rfe_slr_ext_e'],
-            'estimator__max_depth': cv_params['rfe_slr_ext_d'],
-            'estimator__max_features': cv_params['rfe_slr_ext_f'],
-            'estimator__class_weight': cv_params['rfe_slr_ext_cw'],
-            'step': cv_params['rfe_slr_step'],
-            'n_features_to_select': cv_params['skb_slr_k']},
-        'param_routing': ['sample_weight']},
-    'RFE-GradientBoostingClassifier': {
-        'estimator': RFE(grb_clf, tune_step_at=args.rfe_slr_tune_step_at,
-                         reducing_step=args.rfe_slr_reducing_step,
-                         verbose=args.rfe_slr_verbose),
-        'param_grid': {
-            'estimator__n_estimators': cv_params['rfe_slr_grb_e'],
-            'estimator__max_depth': cv_params['rfe_slr_grb_d'],
-            'estimator__max_features': cv_params['rfe_slr_grb_f'],
-            'step': cv_params['rfe_slr_step'],
-            'n_features_to_select': cv_params['skb_slr_k']},
-        'param_routing': ['sample_weight']},
-    'DESeq2': {
-        'estimator': DESeq2(memory=memory),
+            'score_func__alpha': cv_params['cph_srv_a']}},
+    'SelectKBest-FastSurvivalSVM': {
+        'estimator': SelectKBest(fsvm_srv_scorer),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
-            'sv': cv_params['de_slr_pv'],
-            'fc': cv_params['de_slr_fc'],
-            'model_batch': cv_params['de_slr_mb']},
-        'param_routing': ['sample_meta', 'feature_meta']},
-    'EdgeR': {
-        'estimator': EdgeR(memory=memory, prior_count=args.edger_prior_count),
+            'score_func__alpha': cv_params['fsvm_srv_a'],
+            'score_func__rank_ratio': cv_params['fsvm_srv_rr'],
+            'score_func__optimizer': cv_params['fsvm_srv_o']}},
+    'RFE-FastSurvivalSVM': {
+        'estimator': RFE(fsvm_srv, tune_step_at=args.rfe_slr_tune_step_at,
+                         reducing_step=args.rfe_slr_reducing_step,
+                         verbose=args.rfe_slr_verbose),
         'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'pv': cv_params['de_slr_pv'],
-            'fc': cv_params['de_slr_fc'],
-            'model_batch': cv_params['de_slr_mb']},
-        'param_routing': ['sample_meta', 'feature_meta']},
+            'estimator__alpha': cv_params['fsvm_srv_a'],
+            'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
+            'estimator__optimizer': cv_params['fsvm_srv_o'],
+            'step': cv_params['rfe_slr_step'],
+            'n_features_to_select': cv_params['skb_slr_k']}},
     'EdgeRFilterByExpr': {
         'estimator': EdgeRFilterByExpr(),
         'param_grid': {
             'model_batch': cv_params['de_slr_mb']},
         'param_routing': ['sample_meta', 'feature_meta']},
-    'LimmaVoom': {
-        'estimator': LimmaVoom(memory=memory,
-                               model_dupcor=args.limma_model_dupcor,
-                               prior_count=args.edger_prior_count),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'pv': cv_params['de_slr_pv'],
-            'fc': cv_params['de_slr_fc'],
-            'model_batch': cv_params['de_slr_mb']},
-        'param_routing': ['sample_meta', 'feature_meta']},
-    'DreamVoom': {
-        'estimator': DreamVoom(memory=memory,
-                               prior_count=args.edger_prior_count),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'pv': cv_params['de_slr_pv'],
-            'fc': cv_params['de_slr_fc'],
-            'model_batch': cv_params['de_slr_mb']},
-        'param_routing': ['sample_meta', 'feature_meta']},
-    'Limma': {
-        'estimator': Limma(memory=memory, robust=args.limma_robust,
-                           trend=args.limma_trend),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'pv': cv_params['de_slr_pv'],
-            'fc': cv_params['de_slr_fc'],
-            'model_batch': cv_params['de_slr_mb']},
-        'param_routing': ['sample_meta', 'feature_meta']},
-    'FCBF': {
-        'estimator': FCBF(memory=memory),
-        'param_grid': {
-            'k': cv_params['skb_slr_k']}},
-    'ReliefF': {
-        'estimator': ReliefF(memory=memory),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'n_neighbors': cv_params['rlf_slr_n'],
-            'sample_size': cv_params['rlf_slr_s']}},
-    'CFS': {
-        'estimator': CFS()},
     # transformers
     'ColumnTransformer': {
         'estimator': ExtendedColumnTransformer([], n_jobs=1,
@@ -1746,142 +1256,44 @@ pipe_config = {
         'estimator': LimmaBatchEffectRemover(),
         'param_routing': ['sample_meta']},
     # classifiers
-    'LinearSVC': {
-        'estimator': LinearSVC(max_iter=args.lsvc_clf_max_iter,
-                               random_state=args.random_seed,
-                               tol=args.lsvc_clf_tol),
+    'CoxPHSurvivalAnalysis': {
+        'estimator': CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
+                                           n_iter=args.cph_n_iter),
         'param_grid': {
-            'C': cv_params['svc_clf_c'],
-            'class_weight': cv_params['svc_clf_cw']},
-        'param_routing': ['sample_weight']},
-    'SVC': {
-        'estimator': SVC(cache_size=args.svc_clf_cache, gamma='scale',
-                         random_state=args.random_seed),
+            'alpha': cv_params['cph_srv_a']}},
+    'FastSurvivalSVM': {
+        'estimator': FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
+                                     random_state=args.random_seed),
         'param_grid': {
-            'C': cv_params['svc_clf_c'],
-            'class_weight': cv_params['svc_clf_cw'],
-            'kernel': cv_params['svc_clf_kern'],
-            'degree': cv_params['svc_clf_deg'],
-            'gamma': cv_params['svc_clf_g']},
-        'param_routing': ['sample_weight']},
-    'KNeighborsClassifier': {
-        'estimator': KNeighborsClassifier(),
-        'param_grid': {
-            'n_neighbors': cv_params['knn_clf_k'],
-            'weights': cv_params['knn_clf_w']},
-        'param_routing': ['sample_weight']},
-    'DecisionTreeClassifier': {
-        'estimator': DecisionTreeClassifier(random_state=args.random_seed),
-        'param_grid': {
-            'max_depth': cv_params['dt_clf_d'],
-            'max_features': cv_params['dt_clf_f'],
-            'class_weight': cv_params['dt_clf_cw']},
-        'param_routing': ['sample_weight']},
-    'RandomForestClassifier': {
-        'estimator': RandomForestClassifier(random_state=args.random_seed),
-        'param_grid': {
-            'n_estimators': cv_params['rf_clf_e'],
-            'max_depth': cv_params['rf_clf_d'],
-            'max_features': cv_params['rf_clf_f'],
-            'class_weight': cv_params['rf_clf_cw']},
-        'param_routing': ['sample_weight']},
-    'ExtraTreesClassifier': {
-        'estimator': ExtraTreesClassifier(random_state=args.random_seed),
-        'param_grid': {
-            'n_estimators': cv_params['ext_clf_e'],
-            'max_depth': cv_params['ext_clf_d'],
-            'max_features': cv_params['ext_clf_f'],
-            'class_weight': cv_params['ext_clf_cw']},
-        'param_routing': ['sample_weight']},
-    'AdaBoostClassifier-LogisticRegression': {
-        'estimator': AdaBoostClassifier(
-            LogisticRegression(random_state=args.random_seed),
-            random_state=args.random_seed),
-        'param_grid': {
-            'base_estimator__C': cv_params['ada_clf_lgr_c'],
-            'base_estimator__class_weight': cv_params['ada_clf_lgr_cw'],
-            'n_estimators': cv_params['ada_clf_e']},
-        'param_routing': ['sample_weight']},
-    'GradientBoostingClassifier': {
-        'estimator': GradientBoostingClassifier(random_state=args.random_seed),
-        'param_grid': {
-            'n_estimators': cv_params['grb_clf_e'],
-            'max_depth': cv_params['grb_clf_d'],
-            'max_features': cv_params['grb_clf_f']},
-        'param_routing': ['sample_weight']},
-    'GaussianNB': {
-        'estimator': GaussianNB(),
-        'param_routing': ['sample_weight']},
-    'GaussianProcessClassifier': {
-        'estimator': GaussianProcessClassifier(random_state=args.random_seed)},
-    'LinearDiscriminantAnalysis': {
-        'estimator': LinearDiscriminantAnalysis()},
-    'QuadraticDiscriminantAnalysis': {
-        'estimator': QuadraticDiscriminantAnalysis()},
-    'MLPClassifier': {
-        'estimator': MLPClassifier(random_state=args.random_seed),
-        'param_grid': {
-            'hidden_layer_sizes': cv_params['mlp_clf_hls'],
-            'activation': cv_params['mlp_clf_act'],
-            'solver': cv_params['mlp_clf_slvr'],
-            'alpha': cv_params['mlp_clf_a'],
-            'learning_rate': cv_params['mlp_clf_lr']}},
-    'SGDClassifier': {
-        'estimator': SGDClassifier(max_iter=args.sgd_clf_max_iter,
-                                   penalty=args.sgd_clf_penalty,
-                                   random_state=args.random_seed),
-        'param_grid': {
-            'alpha': cv_params['sgd_clf_a'],
-            'loss': cv_params['sgd_clf_loss'],
-            'l1_ratio': cv_params['sgd_clf_l1r'],
-            'class_weight': cv_params['sgd_clf_cw']},
-        'param_routing': ['sample_weight']}}
+            'alpha': cv_params['fsvm_srv_a'],
+            'rank_ratio': cv_params['fsvm_srv_rr'],
+            'optimizer': cv_params['fsvm_srv_o']}}}
 
 params_num_xticks = [
     'slr__k',
-    'slr__max_features',
-    'slr__score_func__n_neighbors',
-    'slr__estimator__n_estimators',
+    'slr__score_func__rank_ratio',
+    'slr__estimator__rank_ratio',
     'slr__step',
     'slr__n_features_to_select',
-    'slr__n_neighbors',
-    'slr__sample_size',
-    'clf__degree',
-    'clf__l1_ratio',
-    'clf__n_neighbors',
-    'clf__n_estimators']
+    'srv__rank_ratio']
 params_fixed_xticks = [
     'slr',
     'slr__cols',
-    'slr__alpha',
-    'slr__estimator__C',
-    'slr__estimator__class_weight',
-    'slr__estimator__max_depth',
-    'slr__estimator__max_features',
-    'slr__fc',
+    'slr__score_func__alpha',
+    'slr__score_func__optimizer',
+    'slr__estimator__alpha',
+    'slr__estimator__optimizer',
     'slr__model_batch',
-    'slr__pv',
-    'slr__sv',
-    'slr__threshold',
     'trf',
     'trf__method',
     'trf__model_batch',
-    'clf',
-    'clf__alpha',
-    'clf__C',
-    'clf__class_weight',
-    'clf__kernel',
-    'clf__loss',
-    'clf__gamma',
-    'clf__weights',
-    'clf__max_depth',
-    'clf__base_estimator__C',
-    'clf__base_estimator__class_weight',
-    'clf__max_features']
+    'srv',
+    'srv__alpha',
+    'srv__optimizer']
 metric_label = {
-    'roc_auc': 'ROC AUC',
-    'balanced_accuracy': 'BCR',
-    'average_precision': 'AVG PRE'}
+    'concordance_index_censored': 'C-index',
+    'concordance_index_ipcw': 'IPCW C-index',
+    'cumulative_dynamic_auc': 'CD ROC AUC'}
 
 run_model_selection()
 if args.show_figs or args.save_figs:
