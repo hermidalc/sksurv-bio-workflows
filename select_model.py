@@ -193,7 +193,8 @@ def load_dataset(dataset_file):
                      columns=r_biobase.featureNames(eset),
                      index=r_biobase.sampleNames(eset))
     sample_meta = r_biobase.pData(eset)
-    y = np.array(sample_meta['Class'], dtype=int)
+    y = Surv.from_dataframe(args.sample_meta_stat_col,
+                            args.sample_meta_surv_col, sample_meta)
     if 'Group' in sample_meta.columns:
         groups = np.array(sample_meta['Group'], dtype=int)
         _, group_indices, group_counts = np.unique(
@@ -930,6 +931,11 @@ parser.add_argument('--col-trf-patterns', type=str, nargs='+',
 parser.add_argument('--col-trf-dtypes', type=str, nargs='+',
                     choices=['category', 'float', 'int'],
                     help='ColumnTransformer column dtypes')
+parser.add_argument('--sample-meta-stat-col', type=str, default='Status',
+                    help='sample metadata survival status column name')
+parser.add_argument('--sample-meta-surv-col', type=str,
+                    default='Survival_in_days',
+                    help='sample metadata survival days column name')
 parser.add_argument('--sample-meta-cols', type=str, nargs='+',
                     help='sample metadata columns')
 parser.add_argument('--test-dataset', '--test-eset', '--test', type=str,
