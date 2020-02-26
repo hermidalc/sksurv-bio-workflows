@@ -5,8 +5,10 @@ channels:
   - bioconda
 dependencies:
   - bioconductor-affy
-  - bioconductor-affyio
   - bioconductor-affyplm
+  - bioconductor-biobase
+  - bioconductor-deseq2
+  - bioconductor-edger
   - bioconductor-sva
   - eli5
   - joblib>=0.14
@@ -25,7 +27,8 @@ dependencies:
   - r-minqa
   - r-mnormt
   - r-nloptr
-  - rpy2=3.1
+  - r-statmod
+  - rpy2
   - scikit-learn<=0.22.1
   - scikit-survival
   - seaborn
