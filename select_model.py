@@ -36,7 +36,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.feature_selection.base import SelectorMixin
-from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import GroupShuffleSplit, ShuffleSplit
 from sklearn.preprocessing import (
     FunctionTransformer, MinMaxScaler, OneHotEncoder, PowerTransformer,
     RobustScaler, StandardScaler)
@@ -54,9 +54,8 @@ pandas2ri.activate()
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
     ColumnSelector, EdgeRFilterByExpr, RFE, SelectKBest)
-from sklearn_extensions.model_selection import (
-    ExtendedGridSearchCV, ExtendedRandomizedSearchCV,
-    StratifiedGroupShuffleSplit)
+from sklearn_extensions.model_selection import (ExtendedGridSearchCV,
+                                                ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
     DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover)
@@ -258,7 +257,7 @@ def calculate_test_scores(pipe, X_test, y_test, pipe_predict_params,
     scores = {}
     y_pred = pipe.predict(X_test, **pipe_predict_params)
     for metric in args.scv_scoring:
-        if metric == 'concordance_index_censored':
+        if metric in ('concordance_index_censored', 'score'):
             scores[metric] = concordance_index_censored(
                 y_test[y_test.dtype.names[0]], y_test[y_test.dtype.names[1]],
                 y_pred)[0]
@@ -512,28 +511,30 @@ def run_model_selection():
             if param not in search_param_routing['estimator']:
                 search_param_routing['estimator'].append(param)
                 search_param_routing['scoring'].append(param)
+    scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
     scv_refit = (True if args.test_dataset or not pipe_props['uses_rjava']
                  else False)
     if groups is None:
-        cv_splitter = StratifiedShuffleSplit(
+        cv_splitter = ShuffleSplit(
             n_splits=args.scv_splits, test_size=args.scv_size,
             random_state=args.random_seed)
     else:
-        cv_splitter = StratifiedGroupShuffleSplit(
+        cv_splitter = GroupShuffleSplit(
             n_splits=args.scv_splits, test_size=args.scv_size,
             random_state=args.random_seed)
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=0, n_jobs=args.n_jobs,
             param_grid=param_grid, param_routing=search_param_routing,
-            refit=scv_refit, return_train_score=False, scoring=None,
+            refit=scv_refit, return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
     elif args.scv_type == 'rand':
         search = ExtendedRandomizedSearchCV(
             pipe, cv=cv_splitter, error_score=0, n_iter=args.scv_n_iter,
             n_jobs=args.n_jobs, param_distributions=param_grid,
             param_routing=search_param_routing, refit=scv_refit,
-            return_train_score=False, scoring=None, verbose=args.scv_verbose)
+            return_train_score=False, scoring=scv_scoring,
+            verbose=args.scv_verbose)
     if args.verbose > 0:
         print(search.__repr__(N_CHAR_MAX=10000))
         if param_grid_dict:
@@ -589,12 +590,10 @@ def run_model_selection():
                     if isinstance(v, BaseEstimator) else v)
                 for k, v in search.best_params_.items()})
             if 'Weight' in final_feature_meta.columns:
-                print('Feature Ranking:')
                 print(tabulate(final_feature_meta.iloc[
                     (-final_feature_meta['Weight'].abs()).argsort()],
                                floatfmt='.6e', headers='keys'))
             else:
-                print('Features:')
                 print(tabulate(final_feature_meta, headers='keys'))
         if args.save_model:
             dump(search, '{}/{}_search.pkl'.format(args.out_dir,
@@ -686,11 +685,11 @@ def run_model_selection():
         split_results = []
         param_cv_scores = {}
         if groups is None:
-            test_splitter = StratifiedShuffleSplit(
+            test_splitter = ShuffleSplit(
                 n_splits=args.test_splits, test_size=args.test_size,
                 random_state=args.random_seed)
         else:
-            test_splitter = StratifiedGroupShuffleSplit(
+            test_splitter = GroupShuffleSplit(
                 n_splits=args.test_splits, test_size=args.test_size,
                 random_state=args.random_seed)
         for split_idx, (train_idxs, test_idxs) in enumerate(
@@ -763,12 +762,10 @@ def run_model_selection():
                     for k, v in best_params.items()})
             if args.verbose > 1:
                 if 'Weight' in final_feature_meta.columns:
-                    print('Feature Ranking:')
                     print(tabulate(final_feature_meta.iloc[
                         (-final_feature_meta['Weight'].abs()).argsort()],
                                    floatfmt='.6e', headers='keys'))
                 else:
-                    print('Features:')
                     print(tabulate(final_feature_meta, headers='keys'))
             split_results.append({
                 'model': best_estimator if args.save_model else None,
@@ -852,23 +849,24 @@ def run_model_selection():
             feature_mean_meta['Mean Weight'] = feature_weights.mean(axis=1)
             feature_mean_meta_floatfmt.extend(['.1f', '.6e'])
         for metric in args.scv_scoring:
-            if metric in ('roc_auc', 'balanced_accuracy', 'average_precision'):
+            if metric in ('score', 'concordance_index_censored',
+                          'concordance_index_ipcw', 'cumulative_dynamic_auc'):
                 feature_scores[metric].fillna(0.5, inplace=True)
             else:
                 raise RuntimeError('No feature scores fillna value defined '
                                    'for {}'.format(metric))
             if feature_scores[metric].mean(axis=1).nunique() > 1:
                 if feature_mean_meta is None:
-                    feature_mean_meta = pd.DataFrame({
+                    feature_mean_meta = feature_meta.reindex(
+                        index=feature_scores[metric].index, fill_value='')
+                    feature_mean_meta_floatfmt.extend(
+                        [''] * feature_meta.shape[1])
+                feature_mean_meta = feature_mean_meta.join(
+                    pd.DataFrame({
                         'Mean Test {}'.format(metric_label[metric]):
-                            feature_scores[metric].mean(axis=1)})
-                else:
-                    feature_mean_meta = feature_mean_meta.join(
-                        pd.DataFrame({
-                            'Mean Test {}'.format(metric_label[metric]):
-                                feature_scores[metric].mean(axis=1)}),
-                        how='left')
-            feature_mean_meta_floatfmt.append('.4f')
+                            feature_scores[metric].mean(axis=1)}),
+                    how='left')
+                feature_mean_meta_floatfmt.append('.4f')
         if args.verbose > 0 and feature_mean_meta is not None:
             print('Overall Feature Ranking:')
             if feature_weights is not None:
@@ -981,10 +979,10 @@ parser.add_argument('--cph-srv-ties', type=str, default='breslow',
                     help='CoxPHSurvivalAnalysis ties')
 parser.add_argument('--cph-srv-n-iter', type=int, default=100,
                     help='CoxPHSurvivalAnalysis n_iter')
-parser.add_argument('--fsvm-srv-a', type=int, nargs='+',
-                    help='FastSurvivalSVM c')
+parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
+                    help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
-                    help='FastSurvivalSVM c min')
+                    help='FastSurvivalSVM alpha exp min')
 parser.add_argument('--fsvm-srv-ae-max', type=int,
                     help='FastSurvivalSVM alpha exp max')
 parser.add_argument('--fsvm-srv-rr', type=float, nargs='+',
@@ -995,6 +993,10 @@ parser.add_argument('--fsvm-srv-rr-max', type=float,
                     help='FastSurvivalSVM rank_ratio max')
 parser.add_argument('--fsvm-srv-rr-step', type=float, default=0.05,
                     help='FastSurvivalSVM rank_ratio step')
+parser.add_argument('--fsvm-srv-o', type=str, nargs='+',
+                    choices=['avltree', 'direct-count', 'PRSVM', 'rbtree',
+                             'simple'],
+                    help='FastSurvivalSVM optimizer')
 parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
                     help='FastSurvivalSVM max_iter')
 parser.add_argument('--edger-prior-count', type=int, default=1,
@@ -1012,14 +1014,11 @@ parser.add_argument('--scv-scoring', type=str, nargs='+',
                     choices=['concordance_index_censored',
                              'concordance_index_ipcw',
                              'cumulative_dynamic_auc'],
-                    default=['concordance_index_censored',
-                             'concordance_index_ipcw'],
                     help='scv scoring metric')
 parser.add_argument('--scv-refit', type=str,
                     choices=['concordance_index_censored',
                              'concordance_index_ipcw',
                              'cumulative_dynamic_auc'],
-                    default='concordance_index_censored',
                     help='scv refit scoring metric')
 parser.add_argument('--scv-n-iter', type=int, default=100,
                     help='randomized scv num iterations')
@@ -1080,6 +1079,9 @@ if args.scv_size >= 1.0:
     args.scv_size = int(args.scv_size)
 if args.scv_verbose is None:
     args.scv_verbose = args.verbose
+if args.scv_scoring is None:
+    args.scv_refit = 'score'
+    args.scv_scoring = [args.scv_refit]
 
 if args.parallel_backend != 'multiprocessing':
     python_warnings = ([os.environ['PYTHONWARNINGS']]
@@ -1138,23 +1140,23 @@ if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
     memory = Memory(location=cachedir, verbose=0)
     cph_srv_scorer = CachedCoxPHSurvivalScorer(
-        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
     fsvm_srv_scorer = CachedFastSurvivalSVMScorer(
         memory=memory, max_iter=args.fsvm_srv_max_iter,
         random_state=args.random_seed)
     cph_srv = CachedCoxPHSurvivalAnalysis(
-        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
     fsvm_srv = CachedFastSurvivalSVM(
         memory=memory, max_iter=args.fsvm_srv_max_iter,
         random_state=args.random_seed)
 else:
     memory = None
     cph_srv_scorer = CoxPHSurvivalScorer(
-        ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+        ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
     fsvm_srv_scorer = FastSurvivalSVMScorer(
         max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)
     cph_srv = CoxPHSurvivalAnalysis(
-        ties=args.cph_srv_ties, n_iter=args.cph_n_iter)
+        ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
     fsvm_srv = FastSurvivalSVM(
         max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)
 
@@ -1238,7 +1240,7 @@ pipe_config = {
             'step': cv_params['rfe_slr_step'],
             'n_features_to_select': cv_params['skb_slr_k']}},
     'EdgeRFilterByExpr': {
-        'estimator': EdgeRFilterByExpr(),
+        'estimator': EdgeRFilterByExpr(is_classif=False),
         'param_grid': {
             'model_batch': cv_params['de_slr_mb']},
         'param_routing': ['sample_meta', 'feature_meta']},
@@ -1262,7 +1264,7 @@ pipe_config = {
     'StandardScaler': {
         'estimator': StandardScaler()},
     'DESeq2RLEVST': {
-        'estimator': DESeq2RLEVST(memory=memory),
+        'estimator': DESeq2RLEVST(is_classif=False, memory=memory),
         'param_grid': {
             'model_batch': cv_params['de_trf_mb']},
         'param_routing': ['sample_meta']},
@@ -1271,12 +1273,12 @@ pipe_config = {
                                     prior_count=args.edger_prior_count),
         'param_routing': ['sample_meta']},
     'LimmaBatchEffectRemover': {
-        'estimator': LimmaBatchEffectRemover(),
+        'estimator': LimmaBatchEffectRemover(preserve_design=False),
         'param_routing': ['sample_meta']},
     # classifiers
     'CoxPHSurvivalAnalysis': {
         'estimator': CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
-                                           n_iter=args.cph_n_iter),
+                                           n_iter=args.cph_srv_n_iter),
         'param_grid': {
             'alpha': cv_params['cph_srv_a']}},
     'FastSurvivalSVM': {
@@ -1311,7 +1313,8 @@ params_fixed_xticks = [
 metric_label = {
     'concordance_index_censored': 'C-index',
     'concordance_index_ipcw': 'IPCW C-index',
-    'cumulative_dynamic_auc': 'CD ROC AUC'}
+    'cumulative_dynamic_auc': 'CD ROC AUC',
+    'score': 'C-index'}
 
 run_model_selection()
 if args.show_figs or args.save_figs:
