@@ -53,16 +53,13 @@ pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
-    ColumnSelector, EdgeRFilterByExpr, RFE, SelectKBest)
+    ColumnSelector, EdgeRFilterByExpr, RFE, SelectFromUnivariateModel)
 from sklearn_extensions.model_selection import (ExtendedGridSearchCV,
                                                 ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
     DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover)
 from sklearn_extensions.utils import _determine_key_type
-from sksurv_extensions.feature_selection import (
-    CachedCoxPHSurvivalScorer, CachedFastSurvivalSVMScorer,
-    CoxPHSurvivalScorer, FastSurvivalSVMScorer)
 from sksurv_extensions.linear_model import CachedCoxPHSurvivalAnalysis
 from sksurv_extensions.svm import CachedFastSurvivalSVM
 
@@ -948,13 +945,13 @@ parser.add_argument('--col-slr-file', type=str, nargs='+',
 parser.add_argument('--col-slr-meta-col', type=str,
                     help='ColumnSelector feature metadata column name')
 parser.add_argument('--skb-slr-k', type=int, nargs='+',
-                    help='SelectKBest k')
+                    help='SelectFromUnivariateModel k')
 parser.add_argument('--skb-slr-k-min', type=int, default=1,
-                    help='SelectKBest k min')
+                    help='SelectFromUnivariateModel k min')
 parser.add_argument('--skb-slr-k-max', type=int,
-                    help='SelectKBest k max')
+                    help='SelectFromUnivariateModel k max')
 parser.add_argument('--skb-slr-k-step', type=int, default=1,
-                    help='SelectKBest k step')
+                    help='SelectFromUnivariateModel k step')
 parser.add_argument('--de-slr-mb', type=str_bool, nargs='+',
                     help='diff expr slr model batch')
 parser.add_argument('--rfe-slr-step', type=float, nargs='+',
@@ -1142,11 +1139,6 @@ robjects.r('options(\'java.parameters\'="-Xmx{:d}m")'
 if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
     memory = Memory(location=cachedir, verbose=0)
-    cph_srv_scorer = CachedCoxPHSurvivalScorer(
-        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
-    fsvm_srv_scorer = CachedFastSurvivalSVMScorer(
-        memory=memory, max_iter=args.fsvm_srv_max_iter,
-        random_state=args.random_seed)
     cph_srv = CachedCoxPHSurvivalAnalysis(
         memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
     fsvm_srv = CachedFastSurvivalSVM(
@@ -1154,10 +1146,6 @@ if args.pipe_memory:
         random_state=args.random_seed)
 else:
     memory = None
-    cph_srv_scorer = CoxPHSurvivalScorer(
-        ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
-    fsvm_srv_scorer = FastSurvivalSVMScorer(
-        max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)
     cph_srv = CoxPHSurvivalAnalysis(
         ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
     fsvm_srv = FastSurvivalSVM(
@@ -1220,18 +1208,18 @@ pipe_config = {
         'param_grid': {
             'cols': cv_params['col_slr_cols']},
         'param_routing': ['feature_meta']},
-    'SelectKBest-CoxPHSurvivalAnalysis': {
-        'estimator': SelectKBest(cph_srv_scorer),
+    'SelectFromUnivariateModel-CoxPHSurvivalAnalysis': {
+        'estimator': SelectFromUnivariateModel(cph_srv),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
-            'score_func__alpha': cv_params['cph_srv_a']}},
-    'SelectKBest-FastSurvivalSVM': {
-        'estimator': SelectKBest(fsvm_srv_scorer),
+            'estimator__alpha': cv_params['cph_srv_a']}},
+    'SelectFromUnivariateModel-FastSurvivalSVM': {
+        'estimator': SelectFromUnivariateModel(fsvm_srv),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
-            'score_func__alpha': cv_params['fsvm_srv_a'],
-            'score_func__rank_ratio': cv_params['fsvm_srv_rr'],
-            'score_func__optimizer': cv_params['fsvm_srv_o']}},
+            'estimator__alpha': cv_params['fsvm_srv_a'],
+            'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
+            'estimator__optimizer': cv_params['fsvm_srv_o']}},
     'RFE-FastSurvivalSVM': {
         'estimator': RFE(fsvm_srv, tune_step_at=args.rfe_slr_tune_step_at,
                          reducing_step=args.rfe_slr_reducing_step,
@@ -1294,7 +1282,6 @@ pipe_config = {
 
 params_num_xticks = [
     'slr__k',
-    'slr__score_func__rank_ratio',
     'slr__estimator__rank_ratio',
     'slr__step',
     'slr__n_features_to_select',
@@ -1302,8 +1289,6 @@ params_num_xticks = [
 params_fixed_xticks = [
     'slr',
     'slr__cols',
-    'slr__score_func__alpha',
-    'slr__score_func__optimizer',
     'slr__estimator__alpha',
     'slr__estimator__optimizer',
     'slr__model_batch',
@@ -1314,10 +1299,10 @@ params_fixed_xticks = [
     'srv__alpha',
     'srv__optimizer']
 metric_label = {
+    'score': 'C-index',
     'concordance_index_censored': 'C-index',
     'concordance_index_ipcw': 'IPCW C-index',
-    'cumulative_dynamic_auc': 'CD ROC AUC',
-    'score': 'C-index'}
+    'cumulative_dynamic_auc': 'CD ROC AUC'}
 
 run_model_selection()
 if args.show_figs or args.save_figs:
