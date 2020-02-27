@@ -21,11 +21,6 @@ r_embedded.set_initoptions(
     ('rpy2', '--quiet', '--no-save', '--max-ppsize=500000'))
 import rpy2.robjects as robjects
 import seaborn as sns
-warnings.filterwarnings('ignore', category=FutureWarning,
-                        module='sklearn.utils.deprecation')
-from eli5 import explain_weights_df
-warnings.filterwarnings('always', category=FutureWarning,
-                        module='sklearn.utils.deprecation')
 from joblib import Memory, Parallel, delayed, dump, parallel_backend
 from natsort import natsorted
 warnings.filterwarnings('ignore', category=FutureWarning,
@@ -314,14 +309,20 @@ def get_final_feature_meta(pipe, feature_meta):
                               axis=0),
                     columns=final_feature_meta.columns,
                     index=new_feature_names)
+    feature_weights = None
     final_estimator = pipe[-1]
-    feature_weights = explain_weights_df(
-        final_estimator, feature_names=final_feature_meta.index.values)
-    if feature_weights is None and hasattr(final_estimator, 'estimator_'):
-        feature_weights = explain_weights_df(
-            final_estimator.estimator_,
-            feature_names=final_feature_meta.index.values)
+    if hasattr(final_estimator, 'coef_'):
+        feature_weights = final_estimator.coef_
+    elif hasattr(final_estimator, 'feature_importances_'):
+        feature_weights = final_estimator.feature_importances_
+    elif hasattr(final_estimator, 'estimator_'):
+        if hasattr(final_estimator.estimator_, 'coef_'):
+            feature_weights = final_estimator.estimator_.coef_
+        elif hasattr(final_estimator.estimator_, 'feature_importances_'):
+            feature_weights = final_estimator.estimator_.feature_importances_
     if feature_weights is not None:
+        feature_weights = pd.DataFrame({'Weight': feature_weights},
+                                       index=final_feature_meta.index)
         feature_weights.set_index('feature', inplace=True,
                                   verify_integrity=True)
         feature_weights.columns = map(str.title, feature_weights.columns)
