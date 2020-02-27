@@ -1140,17 +1140,13 @@ robjects.r('options(\'java.parameters\'="-Xmx{:d}m")'
 if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
     memory = Memory(location=cachedir, verbose=0)
-    cph_srv = CachedCoxPHSurvivalAnalysis(
-        memory=memory, ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
-    fsvm_srv = CachedFastSurvivalSVM(
-        memory=memory, max_iter=args.fsvm_srv_max_iter,
-        random_state=args.random_seed)
+    fsvm_srv = CachedFastSurvivalSVM(memory=memory,
+                                     max_iter=args.fsvm_srv_max_iter,
+                                     random_state=args.random_seed)
 else:
     memory = None
-    cph_srv = CoxPHSurvivalAnalysis(
-        ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)
-    fsvm_srv = FastSurvivalSVM(
-        max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)
+    fsvm_srv = FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
+                               random_state=args.random_seed)
 
 pipeline_step_types = ('slr', 'trf', 'srv')
 cv_params = {k: v for k, v in vars(args).items()
@@ -1210,12 +1206,14 @@ pipe_config = {
             'cols': cv_params['col_slr_cols']},
         'param_routing': ['feature_meta']},
     'SelectFromUnivariateModel-CoxPHSurvivalAnalysis': {
-        'estimator': SelectFromUnivariateModel(cph_srv),
+        'estimator': SelectFromUnivariateModel(CoxPHSurvivalAnalysis(
+            ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']}},
     'SelectFromUnivariateModel-FastSurvivalSVM': {
-        'estimator': SelectFromUnivariateModel(fsvm_srv),
+        'estimator': SelectFromUnivariateModel(FastSurvivalSVM(
+            max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['fsvm_srv_a'],
