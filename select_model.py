@@ -320,13 +320,7 @@ def get_final_feature_meta(pipe, feature_meta):
         elif hasattr(final_estimator.estimator_, 'feature_importances_'):
             feature_weights = final_estimator.estimator_.feature_importances_
     if feature_weights is not None:
-        feature_weights = pd.DataFrame({'Weight': feature_weights},
-                                       index=final_feature_meta.index)
-        feature_weights.set_index('feature', inplace=True,
-                                  verify_integrity=True)
-        feature_weights.columns = map(str.title, feature_weights.columns)
-        final_feature_meta = final_feature_meta.join(feature_weights,
-                                                     how='inner')
+        final_feature_meta['Weight'] = feature_weights
     final_feature_meta.index.rename('Feature', inplace=True)
     return final_feature_meta
 
