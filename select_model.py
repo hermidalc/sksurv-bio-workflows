@@ -1258,7 +1258,7 @@ pipe_config = {
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
         'param_routing': ['sample_meta']},
-    # classifiers
+    # survival predictors
     'CoxPHSurvivalAnalysis': {
         'estimator': CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
                                            n_iter=args.cph_srv_n_iter),
