@@ -638,11 +638,21 @@ def run_model_selection():
             if 'Weight' in final_feature_meta.columns:
                 tf_pipe_steps = pipe.steps[:-1]
                 tf_pipe_steps.append(('slrc', ColumnSelector()))
-                tf_pipe_steps.append(pipe.steps[-1])
+                if isinstance(pipe[-1], (RFE, SelectFromUnivariateModel)):
+                    tf_pipe_steps.append((pipe.steps[-1][0],
+                                          pipe.steps[-1][1].estimator))
+                    best_params = {k.replace('__estimator__', '__', 1): v
+                                   for k, v in search.best_params_.items()
+                                   if '__estimator__' in k}
+                else:
+                    tf_pipe_steps.append(pipe.steps[-1])
+                    best_params = search.best_params_
                 tf_pipe_param_routing = (pipe.param_routing
                                          if pipe.param_routing else {})
                 tf_pipe_param_routing['slrc'] = (
                     pipe_config['ColumnSelector']['param_routing'])
+                if 'feature_meta' not in pipe_fit_params:
+                    pipe_fit_params['feature_meta'] = feature_meta
                 tf_name_sets = []
                 for feature_name in final_feature_meta.iloc[
                         (-final_feature_meta['Weight'].abs()).argsort()].index:
@@ -655,9 +665,8 @@ def run_model_selection():
                     verbose=args.scv_verbose)(
                         delayed(fit_pipeline)(
                             X, y, tf_pipe_steps, tf_pipe_param_routing,
-                            {**search.best_params_,
-                             'slrc__cols': feature_names}, pipe_fit_params)
-                        for feature_names in tf_name_sets)
+                            {**best_params, 'slrc__cols': feature_names},
+                            pipe_fit_params) for feature_names in tf_name_sets)
                 tf_test_scores = {}
                 for tf_pipe in tf_pipes:
                     test_scores = calculate_test_scores(
@@ -1181,7 +1190,7 @@ for cv_param, cv_param_values in cv_params.copy().items():
                 cv_params['skb_slr_k_max'] + cv_params['skb_slr_k_step'],
                 cv_params['skb_slr_k_step']))
     elif cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
-        cv_params[cv_param[:-1]] = 2 ** cv_param_values
+        cv_params[cv_param[:-1]] = 2. ** np.asarray(cv_param_values)
     elif cv_param in ('cph_srv_ae_max', 'fsvm_srv_ae_max'):
         cv_param = '_'.join(cv_param.split('_')[:-1])
         cv_param_v_min = cv_params['{}_min'.format(cv_param)]
