@@ -33,8 +33,8 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.feature_selection.base import SelectorMixin
 from sklearn.model_selection import GroupShuffleSplit, ShuffleSplit
 from sklearn.preprocessing import (
-    FunctionTransformer, MinMaxScaler, OneHotEncoder, PowerTransformer,
-    RobustScaler, StandardScaler)
+    MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
+    StandardScaler)
 from sksurv.base import SurvivalAnalysisMixin
 from sksurv.linear_model import CoxPHSurvivalAnalysis
 from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
@@ -53,7 +53,8 @@ from sklearn_extensions.model_selection import (ExtendedGridSearchCV,
                                                 ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
-    DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover)
+    DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover,
+    ShiftedLogTransformer)
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.linear_model import CachedCoxPHSurvivalAnalysis
 from sksurv_extensions.svm import CachedFastSurvivalSVM
@@ -900,10 +901,6 @@ def run_cleanup():
     rmtree(r_base.tempdir()[0])
 
 
-def shifted_log2(X, shift=1):
-    return np.log2(X + shift)
-
-
 def int_list(arg):
     return list(map(int, arg.split(',')))
 
@@ -1104,17 +1101,10 @@ if args.parallel_backend != 'multiprocessing':
 if args.filter_warnings:
     if args.parallel_backend == 'multiprocessing':
         if 'convergence' in args.filter_warnings:
-            # filter LinearSVC convergence warnings
+            # filter convergence warnings
             warnings.filterwarnings(
                 'ignore', category=ConvergenceWarning,
-                message='^Liblinear failed to converge',
-                module='sklearn.svm._base')
-            # filter SGDClassifier convergence warnings
-            warnings.filterwarnings(
-                'ignore', category=ConvergenceWarning,
-                message=('^Maximum number of iteration reached before '
-                         'convergence'),
-                module='sklearn.linear_model._stochastic_gradient')
+                message='^Optimization did not converge')
         if 'joblib' in args.filter_warnings:
             # filter joblib peristence time warnings
             warnings.filterwarnings(
@@ -1125,12 +1115,7 @@ if args.filter_warnings:
                            if 'PYTHONWARNINGS' in os.environ else [])
         if 'convergence' in args.filter_warnings:
             python_warnings.append(':'.join([
-                'ignore', 'Liblinear failed to converge', 'UserWarning',
-                'sklearn.svm._base']))
-            python_warnings.append(':'.join([
-                'ignore',
-                'Maximum number of iteration reached before convergence',
-                'UserWarning', 'sklearn.linear_model._stochastic_gradient']))
+                'ignore', 'Optimization did not converge', 'UserWarning']))
         if 'joblib' in args.filter_warnings:
             python_warnings.append(':'.join([
                 'ignore', 'Persisting input arguments took', 'UserWarning']))
@@ -1251,9 +1236,8 @@ pipe_config = {
                                                remainder='passthrough')},
     'OneHotEncoder': {
         'estimator':  OneHotEncoder(handle_unknown='ignore', sparse=False)},
-    'ShiftedLog2Transformer': {
-        'estimator':  FunctionTransformer(shifted_log2, check_inverse=False,
-                                          validate=True)},
+    'ShiftedLogTransformer': {
+        'estimator':  ShiftedLogTransformer(base=2, shift=1)},
     'PowerTransformer': {
         'estimator': PowerTransformer(),
         'param_grid': {
