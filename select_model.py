@@ -34,7 +34,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.feature_selection.base import SelectorMixin
-from sklearn.model_selection import GroupShuffleSplit, ShuffleSplit
+from sklearn.model_selection import (
+    GroupKFold, GroupShuffleSplit, KFold, ShuffleSplit)
 from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
@@ -517,13 +518,19 @@ def run_model_selection():
     scv_refit = (True if args.test_dataset or not pipe_props['uses_rjava']
                  else False)
     if groups is None:
-        cv_splitter = ShuffleSplit(
-            n_splits=args.scv_splits, test_size=args.scv_size,
-            random_state=args.random_seed)
+        if args.scv_use_ssplit:
+            cv_splitter = ShuffleSplit(n_splits=args.scv_splits,
+                                       test_size=args.scv_size,
+                                       random_state=args.random_seed)
+        else:
+            cv_splitter = KFold(n_splits=args.scv_splits,
+                                random_state=args.random_seed, shuffle=True)
+    elif args.scv_use_ssplit:
+        cv_splitter = GroupShuffleSplit(n_splits=args.scv_splits,
+                                        test_size=args.scv_size,
+                                        random_state=args.random_seed)
     else:
-        cv_splitter = GroupShuffleSplit(
-            n_splits=args.scv_splits, test_size=args.scv_size,
-            random_state=args.random_seed)
+        cv_splitter = GroupKFold(n_splits=args.scv_splits)
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=0, n_jobs=args.n_jobs,
@@ -699,13 +706,20 @@ def run_model_selection():
         split_results = []
         param_cv_scores = {}
         if groups is None:
-            test_splitter = ShuffleSplit(
-                n_splits=args.test_splits, test_size=args.test_size,
-                random_state=args.random_seed)
+            if args.scv_use_ssplit:
+                test_splitter = ShuffleSplit(n_splits=args.scv_splits,
+                                             test_size=args.scv_size,
+                                             random_state=args.random_seed)
+            else:
+                test_splitter = KFold(n_splits=args.scv_splits,
+                                      random_state=args.random_seed,
+                                      shuffle=True)
+        elif args.scv_use_ssplit:
+            test_splitter = GroupShuffleSplit(n_splits=args.scv_splits,
+                                              test_size=args.scv_size,
+                                              random_state=args.random_seed)
         else:
-            test_splitter = GroupShuffleSplit(
-                n_splits=args.test_splits, test_size=args.test_size,
-                random_state=args.random_seed)
+            test_splitter = GroupKFold(n_splits=args.scv_splits)
         for split_idx, (train_idxs, test_idxs) in enumerate(
                 test_splitter.split(X, y, groups)):
             pipe_fit_params = {}
@@ -1034,6 +1048,8 @@ parser.add_argument('--scv-refit', type=str,
                     help='scv refit scoring metric')
 parser.add_argument('--scv-n-iter', type=int, default=100,
                     help='randomized scv num iterations')
+parser.add_argument('--scv-use-ssplit', default=False, action='store_true',
+                    help='scv use shuffle split variants instead of kfold')
 parser.add_argument('--test-splits', type=int, default=10,
                     help='num outer splits')
 parser.add_argument('--test-size', type=float, default=0.2,
