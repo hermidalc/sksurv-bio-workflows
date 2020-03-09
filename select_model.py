@@ -40,7 +40,7 @@ from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
 from sksurv.base import SurvivalAnalysisMixin
-from sksurv.linear_model import CoxPHSurvivalAnalysis
+from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
                             cumulative_dynamic_auc)
 from sksurv.svm import FastSurvivalSVM
@@ -59,7 +59,6 @@ from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
     DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover, LogTransformer)
 from sklearn_extensions.utils import _determine_key_type
-from sksurv_extensions.linear_model import CachedCoxPHSurvivalAnalysis
 from sksurv_extensions.svm import CachedFastSurvivalSVM
 
 
@@ -1004,6 +1003,14 @@ parser.add_argument('--cph-srv-ties', type=str, default='breslow',
                     help='CoxPHSurvivalAnalysis ties')
 parser.add_argument('--cph-srv-n-iter', type=int, default=100,
                     help='CoxPHSurvivalAnalysis n_iter')
+parser.add_argument('--cnet-srv-l1r', type=float, nargs='+',
+                    help='CoxnetSurvivalAnalysis l1_ratio')
+parser.add_argument('--cnet-srv-l1r-min', type=float,
+                    help='CoxnetSurvivalAnalysis l1_ratio min')
+parser.add_argument('--cnet-srv-l1r-max', type=float,
+                    help='CoxnetSurvivalAnalysis l1_ratio max')
+parser.add_argument('--cnet-srv-l1r-step', type=float, default=0.05,
+                    help='CoxnetSurvivalAnalysis l1_ratio step')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
@@ -1184,7 +1191,8 @@ for cv_param, cv_param_values in cv_params.copy().items():
             cv_params[cv_param[:-1]] = None
         continue
     if cv_param in ('col_slr_cols', 'skb_slr_k', 'rfe_slr_step', 'de_slr_mb',
-                    'pwr_trf_meth', 'de_trf_mb', 'fsvm_srv_rr', 'fsvm_srv_o'):
+                    'pwr_trf_meth', 'de_trf_mb', 'cnet_srv_l1r', 'fsvm_srv_rr',
+                    'fsvm_srv_o'):
         cv_params[cv_param] = sorted(cv_param_values)
     elif cv_param == 'skb_slr_k_max':
         cv_param = '_'.join(cv_param.split('_')[:3])
@@ -1215,12 +1223,14 @@ for cv_param, cv_param_values in cv_params.copy().items():
         cv_params[cv_param[:-1]] = np.logspace(
             cv_param_v_min, cv_param_v_max,
             cv_param_v_max - cv_param_v_min + 1, base=log_base)
-    elif cv_param == 'fsvm_srv_rr_max':
-        cv_params['fsvm_srv_rr'] = np.linspace(
-            cv_params['fsvm_srv_rr_min'], cv_params['fsvm_srv_rr_max'],
-            int(np.floor(
-                (cv_params['fsvm_srv_rr_max'] - cv_params['fsvm_srv_rr_min'])
-                / cv_params['fsvm_srv_rr_step'])) + 1)
+    elif cv_param in ('cnet_srv_l1r_max', 'fsvm_srv_rr_max'):
+        cv_param = '_'.join(cv_param.split('_')[:3])
+        cv_params[cv_param] = np.linspace(
+            cv_params['{}_min'.format(cv_param)],
+            cv_params['{}_max'.format(cv_param)],
+            int(np.floor((cv_params['{}_max'.format(cv_param)]
+                          - cv_params['{}_min'.format(cv_param)])
+                         / cv_params['{}_step'.format(cv_param)])) + 1)
 
 pipe_config = {
     # feature selectors
@@ -1235,6 +1245,12 @@ pipe_config = {
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']}},
+    'SelectFromUnivariateModel-CoxnetSurvivalAnalysis': {
+        'estimator': SelectFromUnivariateModel(CoxnetSurvivalAnalysis(
+            fit_baseline_model=True, normalize=False)),
+        'param_grid': {
+            'k': cv_params['skb_slr_k'],
+            'estimator__l1_ratio': cv_params['cnet_srv_l1r']}},
     'SelectFromUnivariateModel-FastSurvivalSVM': {
         'estimator': SelectFromUnivariateModel(FastSurvivalSVM(
             max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)),
@@ -1294,6 +1310,11 @@ pipe_config = {
                                            n_iter=args.cph_srv_n_iter),
         'param_grid': {
             'alpha': cv_params['cph_srv_a']}},
+    'CoxnetSurvivalAnalysis': {
+        'estimator': CoxnetSurvivalAnalysis(fit_baseline_model=True,
+                                            normalize=False),
+        'param_grid': {
+            'l1_ratio': cv_params['cnet_srv_l1r']}},
     'FastSurvivalSVM': {
         'estimator': FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
                                      random_state=args.random_seed),
@@ -1304,9 +1325,11 @@ pipe_config = {
 
 params_num_xticks = [
     'slr__k',
+    'slr__estimator__l1_ratio',
     'slr__estimator__rank_ratio',
     'slr__step',
     'slr__n_features_to_select',
+    'srv__l1_ratio',
     'srv__rank_ratio']
 params_fixed_xticks = [
     'slr',
