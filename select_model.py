@@ -1245,12 +1245,6 @@ pipe_config = {
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']}},
-    'SelectFromUnivariateModel-CoxnetSurvivalAnalysis': {
-        'estimator': SelectFromUnivariateModel(CoxnetSurvivalAnalysis(
-            fit_baseline_model=True, normalize=False)),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'estimator__l1_ratio': cv_params['cnet_srv_l1r']}},
     'SelectFromUnivariateModel-FastSurvivalSVM': {
         'estimator': SelectFromUnivariateModel(FastSurvivalSVM(
             max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)),
@@ -1325,7 +1319,6 @@ pipe_config = {
 
 params_num_xticks = [
     'slr__k',
-    'slr__estimator__l1_ratio',
     'slr__estimator__rank_ratio',
     'slr__step',
     'slr__n_features_to_select',
