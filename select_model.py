@@ -1187,24 +1187,34 @@ for cv_param, cv_param_values in cv_params.copy().items():
                     'pwr_trf_meth', 'de_trf_mb', 'fsvm_srv_rr', 'fsvm_srv_o'):
         cv_params[cv_param] = sorted(cv_param_values)
     elif cv_param == 'skb_slr_k_max':
-        if cv_params['skb_slr_k_min'] == 1 and cv_params['skb_slr_k_step'] > 1:
-            cv_params['skb_slr_k'] = [1] + list(range(
-                0, cv_params['skb_slr_k_max'] + cv_params['skb_slr_k_step'],
-                cv_params['skb_slr_k_step']))[1:]
+        cv_param = '_'.join(cv_param.split('_')[:3])
+        if (cv_params['{}_min'.format(cv_param)] == 1
+                and cv_params['{}_step'.format(cv_param)] > 1):
+            cv_params[cv_param] = [1] + list(range(
+                0, cv_params['{}_max'.format(cv_param)]
+                + cv_params['{}_step'.format(cv_param)],
+                cv_params['{}_step'.format(cv_param)]))[1:]
         else:
-            cv_params['skb_slr_k'] = list(range(
-                cv_params['skb_slr_k_min'],
-                cv_params['skb_slr_k_max'] + cv_params['skb_slr_k_step'],
-                cv_params['skb_slr_k_step']))
-    elif cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
+            cv_params[cv_param] = list(range(
+                cv_params['{}_min'.format(cv_param)],
+                cv_params['{}_max'.format(cv_param)]
+                + cv_params['{}_step'.format(cv_param)],
+                cv_params['{}_step'.format(cv_param)]))
+    elif cv_param == 'cph_srv_ae':
+        cv_params[cv_param[:-1]] = 10. ** np.asarray(cv_param_values)
+    elif cv_param == 'fsvm_srv_ae':
         cv_params[cv_param[:-1]] = 2. ** np.asarray(cv_param_values)
     elif cv_param in ('cph_srv_ae_max', 'fsvm_srv_ae_max'):
         cv_param = '_'.join(cv_param.split('_')[:-1])
         cv_param_v_min = cv_params['{}_min'.format(cv_param)]
         cv_param_v_max = cv_param_values
+        if cv_param == 'cph_srv_ae':
+            log_base = 10
+        elif cv_param == 'fsvm_srv_ae':
+            log_base = 2
         cv_params[cv_param[:-1]] = np.logspace(
             cv_param_v_min, cv_param_v_max,
-            cv_param_v_max - cv_param_v_min + 1, base=2)
+            cv_param_v_max - cv_param_v_min + 1, base=log_base)
     elif cv_param == 'fsvm_srv_rr_max':
         cv_params['fsvm_srv_rr'] = np.linspace(
             cv_params['fsvm_srv_rr_min'], cv_params['fsvm_srv_rr_max'],
