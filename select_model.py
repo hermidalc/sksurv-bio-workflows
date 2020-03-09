@@ -321,7 +321,7 @@ def get_final_feature_meta(pipe, feature_meta):
             feature_weights = final_estimator.estimator_.coef_
         elif hasattr(final_estimator.estimator_, 'feature_importances_'):
             feature_weights = final_estimator.estimator_.feature_importances_
-    if feature_weights is not None:
+    if feature_weights is not None and feature_weights.ndim == 1:
         final_feature_meta['Weight'] = feature_weights
     final_feature_meta.index.rename('Feature', inplace=True)
     return final_feature_meta
