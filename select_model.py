@@ -1261,7 +1261,7 @@ parser.add_argument('--random-seed', type=int, default=777,
 parser.add_argument('--jvm-heap-size', type=int, default=500,
                     help='rjava jvm heap size')
 parser.add_argument('--filter-warnings', type=str, nargs='+',
-                    choices=['convergence', 'joblib', 'qda'],
+                    choices=['convergence', 'joblib'],
                     help='filter warnings')
 parser.add_argument('--verbose', type=int, default=1,
                     help='program verbosity')
