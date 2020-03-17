@@ -420,9 +420,14 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
         param_parts[param_parts_start_idx] = pipe_step_type_regex.sub(
             r'\1', param_parts[param_parts_start_idx])
         param_type = '__'.join(param_parts[param_parts_start_idx:])
-        if param_type in params_num_xticks:
+        if param_type in params_lin_xticks:
             x_axis = param_grid_dict[param]
-            plt.xticks(x_axis)
+            if len(x_axis) <= 30:
+                plt.xticks(x_axis)
+        elif param_type in params_log_xticks:
+            x_axis = np.ravel(param_grid_dict[param])
+            plt.xscale('log', basex=(2 if np.all(np.frexp(x_axis)[0] == 0.5)
+                                     else 10))
         elif param_type in params_fixed_xticks:
             x_axis = range(len(param_grid_dict[param]))
             xtick_labels = [v.split('.')[-1]
@@ -770,7 +775,8 @@ def run_model_selection():
             ax_slr.set_ylabel('Test Score', fontsize=args.axis_font_size)
             x_axis = range(1, final_feature_meta.shape[0] + 1)
             ax_slr.set_xlim([min(x_axis), max(x_axis)])
-            ax_slr.set_xticks(x_axis)
+            if len(x_axis) <= 30:
+                ax_slr.set_xticks(x_axis)
         test_datasets = natsorted(list(
             set(args.test_dataset) - set(args.train_dataset)))
         test_metric_colors = sns.color_palette(
@@ -1489,26 +1495,27 @@ pipe_config = {
             'rank_ratio': cv_params['fsvm_srv_rr'],
             'optimizer': cv_params['fsvm_srv_o']}}}
 
-params_num_xticks = [
+params_lin_xticks = [
     'slr__k',
     'slr__estimator__rank_ratio',
     'slr__step',
     'slr__n_features_to_select',
     'srv__l1_ratio',
+    'srv__n_alphas',
     'srv__rank_ratio']
+params_log_xticks = [
+    'slr__estimator__alpha',
+    'srv__alpha',
+    'srv__alphas']
 params_fixed_xticks = [
     'slr',
     'slr__cols',
-    'slr__estimator__alpha',
     'slr__estimator__optimizer',
     'slr__model_batch',
     'trf',
     'trf__method',
     'trf__model_batch',
     'srv',
-    'srv__alpha',
-    'srv__alphas',
-    'srv__n_alphas',
     'srv__optimizer']
 metric_label = {
     'score': 'C-index',
