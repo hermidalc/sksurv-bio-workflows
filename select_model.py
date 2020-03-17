@@ -30,17 +30,15 @@ from joblib import Memory, Parallel, delayed, dump, parallel_backend
 from natsort import natsorted
 from rpy2.robjects import numpy2ri, pandas2ri
 from rpy2.robjects.packages import importr
-from sklearn.base import BaseEstimator, clone, TransformerMixin
+from sklearn.base import BaseEstimator, clone, is_classifier, is_regressor
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.feature_selection.base import SelectorMixin
 from sklearn.model_selection import (GroupKFold, GroupShuffleSplit, KFold,
                                      ParameterGrid, ParameterSampler,
                                      ShuffleSplit)
 from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
-from sksurv.base import SurvivalAnalysisMixin
 from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
                             cumulative_dynamic_auc)
@@ -92,12 +90,12 @@ def setup_pipe_and_param_grid(cmd_pipe_steps):
                     run_cleanup()
                     raise RuntimeError('No pipeline config exists for {}'
                                        .format(step_key))
-                if isinstance(estimator, SelectorMixin):
+                if hasattr(estimator, 'get_support'):
                     step_type = 'slr'
                     pipe_props['has_selector'] = True
-                elif isinstance(estimator, TransformerMixin):
+                elif hasattr(estimator, 'fit_transform'):
                     step_type = 'trf'
-                elif isinstance(estimator, SurvivalAnalysisMixin):
+                elif hasattr(estimator, 'score'):
                     step_type = 'srv'
                 else:
                     run_cleanup()
