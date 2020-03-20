@@ -706,14 +706,13 @@ def run_model_selection():
                         params[srv_step_name], CoxnetSurvivalAnalysis)):
                     param_grid[-1][cnet_srv_a_param] = np.array([
                         [a] for a in np.logspace(
-                            np.log(cnet_pipe_alpha_maxs[cnet_pipes_idx]),
-                            np.log(cnet_pipe_alpha_mins[cnet_pipes_idx]),
-                            base=np.exp(1), num=(
-                                params[cnet_srv_n_param]
-                                if cnet_srv_n_param in params else
-                                params[srv_step_name].n_alphas
-                                if srv_step_name in params else
-                                pipe[-1].n_alphas))])
+                            np.log10(cnet_pipe_alpha_maxs[cnet_pipes_idx]),
+                            np.log10(cnet_pipe_alpha_mins[cnet_pipes_idx]),
+                            num=(params[cnet_srv_n_param]
+                                 if cnet_srv_n_param in params else
+                                 params[srv_step_name].n_alphas
+                                 if srv_step_name in params else
+                                 pipe[-1].n_alphas))])
                     cnet_pipes_idx += 1
             if args.scv_type == 'grid':
                 search.set_params(param_grid=param_grid)
@@ -1162,12 +1161,16 @@ parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
                     help='PowerTransformer meth')
 parser.add_argument('--de-trf-mb', type=str_bool, nargs='+',
                     help='diff expr trf model batch')
+parser.add_argument('--cph-srv-am', type=int, default=1,
+                    help='CoxPHSurvivalAnalysis alpha mantissa')
 parser.add_argument('--cph-srv-ae', type=int, nargs='+',
                     help='CoxPHSurvivalAnalysis alpha exp')
 parser.add_argument('--cph-srv-ae-min', type=int,
                     help='CoxPHSurvivalAnalysis alpha exp min')
 parser.add_argument('--cph-srv-ae-max', type=int,
                     help='CoxPHSurvivalAnalysis alpha exp max')
+parser.add_argument('--cph-srv-num-alphas', type=int, default=10,
+                    help='CoxPHSurvivalAnalysis num alphas')
 parser.add_argument('--cph-srv-ties', type=str, default='breslow',
                     help='CoxPHSurvivalAnalysis ties')
 parser.add_argument('--cph-srv-n-iter', type=int, default=100,
@@ -1386,20 +1389,25 @@ for cv_param, cv_param_values in cv_params.copy().items():
                 + cv_params['{}_step'.format(cv_param)],
                 cv_params['{}_step'.format(cv_param)]))
     elif cv_param == 'cph_srv_ae':
-        cv_params[cv_param[:-1]] = 10. ** np.asarray(cv_param_values)
+        cv_params[cv_param[:-1]] = (
+            cv_params['cph_srv_am'] * 10. ** np.asarray(cv_param_values))
+    elif cv_param == 'cph_srv_ae_max':
+        cv_param = '_'.join(cv_param.split('_')[:-1])
+        cv_param_v_min = (cv_params['cph_srv_am'] * 10.
+                          ** cv_params['{}_min'.format(cv_param)])
+        cv_param_v_max = cv_params['cph_srv_am'] * 10. ** cv_param_values
+        cv_params[cv_param[:-1]] = np.logspace(np.log10(cv_param_v_min),
+                                               np.log10(cv_param_v_max),
+                                               cv_params['cph_srv_num_alphas'])
     elif cv_param == 'fsvm_srv_ae':
         cv_params[cv_param[:-1]] = 2. ** np.asarray(cv_param_values)
-    elif cv_param in ('cph_srv_ae_max', 'fsvm_srv_ae_max'):
+    elif cv_param == 'fsvm_srv_ae_max':
         cv_param = '_'.join(cv_param.split('_')[:-1])
         cv_param_v_min = cv_params['{}_min'.format(cv_param)]
         cv_param_v_max = cv_param_values
-        if cv_param == 'cph_srv_ae':
-            log_base = 10
-        elif cv_param == 'fsvm_srv_ae':
-            log_base = 2
         cv_params[cv_param[:-1]] = np.logspace(
             cv_param_v_min, cv_param_v_max,
-            cv_param_v_max - cv_param_v_min + 1, base=log_base)
+            cv_param_v_max - cv_param_v_min + 1, base=2)
     elif cv_param in ('cnet_srv_l1r_max', 'fsvm_srv_rr_max'):
         cv_param = '_'.join(cv_param.split('_')[:3])
         cv_params[cv_param] = np.round(
@@ -1408,11 +1416,13 @@ for cv_param, cv_param_values in cv_params.copy().items():
                         int(np.round((cv_params['{}_max'.format(cv_param)]
                                       - cv_params['{}_min'.format(cv_param)])
                                      / cv_params['{}_step'.format(cv_param)]))
-                        + 1), decimals=2)
+                        + 1), decimals=3)
+cnet_srv_min_1lr = 1e-7
 if cv_params['cnet_srv_l1r'] is not None and any(
-        r < 0.01 for r in cv_params['cnet_srv_l1r']):
-    cv_params['cnet_srv_l1r'] = [0.01] + [r for r in cv_params['cnet_srv_l1r']
-                                          if r > 0.01]
+        r < cnet_srv_min_1lr for r in cv_params['cnet_srv_l1r']):
+    cv_params['cnet_srv_l1r'] = np.array(
+        [cnet_srv_min_1lr] + [r for r in cv_params['cnet_srv_l1r']
+                              if r >= cnet_srv_min_1lr])
 
 pipe_config = {
     # feature selectors
