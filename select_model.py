@@ -40,6 +40,7 @@ from sklearn.model_selection import (GroupKFold, GroupShuffleSplit, KFold,
 from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
+from sksurv.base import SurvivalAnalysisMixin
 from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
 from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
                             cumulative_dynamic_auc)
@@ -52,13 +53,16 @@ pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
-    ColumnSelector, EdgeRFilterByExpr, RFE, SelectFromUnivariateModel)
+    ColumnSelector, EdgeRFilterByExpr, RFE)
 from sklearn_extensions.model_selection import (ExtendedGridSearchCV,
                                                 ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
     DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover, LogTransformer)
 from sklearn_extensions.utils import _determine_key_type
+from sksurv_extensions.feature_selection import SelectFromUnivariateModel
+from sksurv_extensions.linear_model import (ExtendedCoxnetSurvivalAnalysis,
+                                            FastCoxPHSurvivalAnalysis)
 from sksurv_extensions.svm import CachedFastSurvivalSVM
 
 
@@ -91,13 +95,17 @@ def setup_pipe_and_param_grid(cmd_pipe_steps):
                     run_cleanup()
                     raise RuntimeError('No pipeline config exists for {}'
                                        .format(step_key))
-                if hasattr(estimator, 'get_support'):
+                if isinstance(estimator, SurvivalAnalysisMixin) or (
+                        hasattr(estimator, 'estimator') and isinstance(
+                            estimator.estimator, SurvivalAnalysisMixin)):
+                    step_type = 'srv'
+                    if hasattr(estimator, 'get_support'):
+                        pipe_props['has_selector'] = True
+                elif hasattr(estimator, 'get_support'):
                     step_type = 'slr'
                     pipe_props['has_selector'] = True
                 elif hasattr(estimator, 'fit_transform'):
                     step_type = 'trf'
-                elif hasattr(estimator, 'score'):
-                    step_type = 'srv'
                 else:
                     run_cleanup()
                     raise RuntimeError('Unsupported estimator type {}'
@@ -205,20 +213,24 @@ def load_dataset(dataset_file):
     except ValueError:
         feature_meta = pd.DataFrame(index=r_biobase.featureNames(eset))
     if args.sample_meta_cols:
+        new_feature_names = []
+        feature_meta[args.cnet_penalty_factor_meta_col] = 1
         for sample_meta_col in args.sample_meta_cols:
             if sample_meta_col in sample_meta.columns:
                 if sample_meta_col not in X.columns:
                     X[sample_meta_col] = sample_meta[sample_meta_col]
-                    feature_meta = feature_meta.append(
-                        pd.Series(name=sample_meta_col, dtype=str),
-                        verify_integrity=True)
-                    feature_meta.loc[sample_meta_col].fillna('', inplace=True)
+                    new_feature_names.append(sample_meta_col)
                 else:
                     raise RuntimeError('{} column already exists in X'
                                        .format(sample_meta_col))
             else:
                 raise RuntimeError('{} column does not exist in sample_meta'
                                    .format(sample_meta_col))
+        new_feature_meta = pd.DataFrame('', index=new_feature_names,
+                                        columns=feature_meta.columns)
+        new_feature_meta[args.cnet_penalty_factor_meta_col] = 0
+        feature_meta = feature_meta.append(new_feature_meta,
+                                           verify_integrity=True)
     col_trf_columns = []
     if args.col_trf_patterns:
         for pattern in args.col_trf_patterns:
@@ -273,7 +285,7 @@ def calculate_test_scores(pipe, X_test, y_test, pipe_predict_params,
     return scores
 
 
-def get_final_feature_meta(pipe, feature_meta):
+def transform_feature_meta(pipe, feature_meta):
     final_feature_meta = None
     for estimator in pipe:
         if isinstance(estimator, ColumnTransformer):
@@ -464,10 +476,10 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
 
 
 def run_model_selection():
-    (pipe, pipe_step_names, pipe_props, param_grid, param_grid_dict,
-     param_grid_estimators) = setup_pipe_and_param_grid(args.pipe_steps)
     (dataset_name, X, y, groups, sample_meta, sample_weights, feature_meta,
      col_trf_columns) = load_dataset(args.train_dataset)
+    (pipe, pipe_step_names, pipe_props, param_grid, param_grid_dict,
+     param_grid_estimators) = setup_pipe_and_param_grid(args.pipe_steps)
     if (isinstance(pipe[0], ColumnTransformer)
             and args.col_trf_pipe_steps is not None):
         col_trf_name, col_trf_estimator = pipe.steps[0]
@@ -510,9 +522,8 @@ def run_model_selection():
                                             *col_trf_param_grids):
                 param_grid.append({k: v for params in param_grid_combo
                                    for k, v in params.items()})
-        col_trf_estimator.set_params(
-            param_routing=col_trf_param_routing,
-            transformers=col_trf_transformers)
+        col_trf_estimator.set_params(param_routing=col_trf_param_routing,
+                                     transformers=col_trf_transformers)
         if col_trf_param_routing is not None:
             pipe_param_routing = (pipe.param_routing if pipe.param_routing
                                   else {})
@@ -526,6 +537,29 @@ def run_model_selection():
     else:
         pipe_name = '{}\n{}'.format('->'.join(pipe_step_names[:-1]),
                                     pipe_step_names[-1])
+    srv_step_name = pipe.steps[-1][0]
+    if args.sample_meta_cols:
+        if hasattr(pipe[-1], 'penalty_factor_meta_col'):
+            pipe[-1].set_params(
+                penalty_factor_meta_col=args.cnet_penalty_factor_meta_col)
+        elif (hasattr(pipe[-1], 'estimator')
+              and hasattr(pipe[-1].estimator, 'penalty_factor_meta_col')):
+            pipe[-1].estimator.set_params(
+                penalty_factor_meta_col=args.cnet_penalty_factor_meta_col)
+        elif pipe[-1] is None:
+            for params in param_grid:
+                if srv_step_name in params:
+                    if (hasattr(params[srv_step_name][0],
+                                'penalty_factor_meta_col')):
+                        params[srv_step_name][0].set_params(
+                            penalty_factor_meta_col=(
+                                args.cnet_penalty_factor_meta_col))
+                    elif (hasattr(params[srv_step_name][0], 'estimator')
+                          and hasattr(params[srv_step_name][0].estimator,
+                                      'penalty_factor_meta_col')):
+                        params[srv_step_name][0].estimator.set_params(
+                            penalty_factor_meta_col=(
+                                args.cnet_penalty_factor_meta_col))
     search_param_routing = ({'cv': 'groups',
                              'estimator': ['sample_weight'],
                              'scoring': ['sample_weight']}
@@ -538,8 +572,7 @@ def run_model_selection():
                 search_param_routing['estimator'].append(param)
                 search_param_routing['scoring'].append(param)
     scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
-    scv_refit = (True if args.test_dataset or not pipe_props['uses_rjava']
-                 else False)
+    scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
     if groups is None:
         if args.scv_use_ssplit:
             cv_splitter = ShuffleSplit(n_splits=args.scv_splits,
@@ -607,7 +640,6 @@ def run_model_selection():
             search_fit_params['groups'] = groups
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             cnet_pipes = []
-            srv_step_name = pipe.steps[-1][0]
             if args.scv_type == 'grid':
                 param_combos = ParameterGrid(param_grid)
             elif args.scv_type == 'rand':
@@ -704,8 +736,8 @@ def run_model_selection():
                 param_grid.append({k: [v] for k, v in params.items()})
                 if (isinstance(pipe[-1], CoxnetSurvivalAnalysis) or isinstance(
                         params[srv_step_name], CoxnetSurvivalAnalysis)):
-                    param_grid[-1][cnet_srv_a_param] = np.array([
-                        [a] for a in np.logspace(
+                    param_grid[-1][cnet_srv_a_param] = np.array(
+                        [[a] for a in np.logspace(
                             np.log10(cnet_pipe_alpha_maxs[cnet_pipes_idx]),
                             np.log10(cnet_pipe_alpha_mins[cnet_pipes_idx]),
                             num=(params[cnet_srv_n_param]
@@ -739,7 +771,7 @@ def run_model_selection():
                 param_grid_dict[cnet_srv_a_param] = (
                     param_grid[0][cnet_srv_a_param])
         param_cv_scores = add_param_cv_scores(search, param_grid_dict)
-        final_feature_meta = get_final_feature_meta(search.best_estimator_,
+        final_feature_meta = transform_feature_meta(search.best_estimator_,
                                                     feature_meta)
         if args.verbose > 0:
             print('Train:', dataset_name, end=' ')
@@ -812,12 +844,8 @@ def run_model_selection():
                     tf_pipe_steps.append((
                         search.best_estimator_.steps[-1][0],
                         search.best_estimator_.steps[-1][1].estimator))
-                    best_params = {k.replace('__estimator__', '__', 1): v
-                                   for k, v in search.best_params_.items()
-                                   if '__estimator__' in k}
                 else:
                     tf_pipe_steps.append(search.best_estimator_.steps[-1])
-                    best_params = search.best_params_
                 tf_pipe_param_routing = (
                     search.best_estimator_.param_routing
                     if search.best_estimator_.param_routing else {})
@@ -837,8 +865,7 @@ def run_model_selection():
                     verbose=args.scv_verbose)(
                         delayed(fit_pipeline)(
                             X, y, tf_pipe_steps,
-                            params={**best_params,
-                                    'slrc__cols': feature_names},
+                            params={'slrc__cols': feature_names},
                             param_routing=tf_pipe_param_routing,
                             fit_params=pipe_fit_params)
                         for feature_names in tf_name_sets)
@@ -919,7 +946,7 @@ def run_model_selection():
                 best_estimator = search.best_estimator_
             param_cv_scores = add_param_cv_scores(search, param_grid_dict,
                                                   param_cv_scores)
-            final_feature_meta = get_final_feature_meta(best_estimator,
+            final_feature_meta = transform_feature_meta(best_estimator,
                                                         feature_meta)
             split_scores = {'cv': {}}
             for metric in args.scv_scoring:
@@ -1137,23 +1164,15 @@ parser.add_argument('--col-slr-file', type=str, nargs='+',
 parser.add_argument('--col-slr-meta-col', type=str,
                     help='ColumnSelector feature metadata column name')
 parser.add_argument('--skb-slr-k', type=int, nargs='+',
-                    help='SelectFromUnivariateModel k')
+                    help='Selector k features')
 parser.add_argument('--skb-slr-k-min', type=int, default=1,
-                    help='SelectFromUnivariateModel k min')
+                    help='Selector k min features')
 parser.add_argument('--skb-slr-k-max', type=int,
-                    help='SelectFromUnivariateModel k max')
+                    help='Selector k max features')
 parser.add_argument('--skb-slr-k-step', type=int, default=1,
-                    help='SelectFromUnivariateModel k step')
+                    help='Selector k step features')
 parser.add_argument('--de-slr-mb', type=str_bool, nargs='+',
                     help='diff expr slr model batch')
-parser.add_argument('--rfe-slr-step', type=float, nargs='+',
-                    help='RFE step')
-parser.add_argument('--rfe-slr-tune-step-at', type=int,
-                    help='RFE tune step at')
-parser.add_argument('--rfe-slr-reducing-step', default=False,
-                    action='store_true', help='RFE reducing step')
-parser.add_argument('--rfe-slr-verbose', type=int, default=0,
-                    help='RFE verbosity')
 parser.add_argument('--mms-trf-feature-range', type=int_list, default=(0, 1),
                     help='MinMaxScaler feature range')
 parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
@@ -1161,6 +1180,14 @@ parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
                     help='PowerTransformer meth')
 parser.add_argument('--de-trf-mb', type=str_bool, nargs='+',
                     help='diff expr trf model batch')
+parser.add_argument('--rfe-srv-step', type=float, nargs='+',
+                    help='RFE step')
+parser.add_argument('--rfe-srv-tune-step-at', type=int,
+                    help='RFE tune step at')
+parser.add_argument('--rfe-srv-reducing-step', default=False,
+                    action='store_true', help='RFE reducing step')
+parser.add_argument('--rfe-srv-verbose', type=int, default=0,
+                    help='RFE verbosity')
 parser.add_argument('--cph-srv-am', type=int, default=1,
                     help='CoxPHSurvivalAnalysis alpha mantissa')
 parser.add_argument('--cph-srv-ae', type=int, nargs='+',
@@ -1171,10 +1198,12 @@ parser.add_argument('--cph-srv-ae-max', type=int,
                     help='CoxPHSurvivalAnalysis alpha exp max')
 parser.add_argument('--cph-srv-num-alphas', type=int, default=10,
                     help='CoxPHSurvivalAnalysis num alphas')
-parser.add_argument('--cph-srv-ties', type=str, default='breslow',
+parser.add_argument('--cph-srv-ties', type=str, default='efron',
                     help='CoxPHSurvivalAnalysis ties')
 parser.add_argument('--cph-srv-n-iter', type=int, default=100,
                     help='CoxPHSurvivalAnalysis n_iter')
+parser.add_argument('--cph-srv-max-iter', type=int, default=1000000,
+                    help='FastCoxPHSurvivalAnalysis max_iter')
 parser.add_argument('--cnet-srv-l1r', type=float, nargs='+',
                     help='CoxnetSurvivalAnalysis l1_ratio')
 parser.add_argument('--cnet-srv-l1r-min', type=float,
@@ -1189,6 +1218,10 @@ parser.add_argument('--cnet-srv-alpha-min-ratio', type=float, default=0.1,
                     help='CoxnetSurvivalAnalysis alpha_min_ratio')
 parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
                     help='CoxnetSurvivalAnalysis max_iter')
+parser.add_argument('--cnet-penalty-factor-meta-col', type=str,
+                    default='Coxnet Penalty Factor',
+                    help='FastCoxPH/CoxnetSurvivalAnalysis penalty_factor '
+                         'feature metadata column name')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
@@ -1298,8 +1331,8 @@ if args.scv_scoring is None:
 if args.parallel_backend != 'multiprocessing':
     python_warnings = ([os.environ['PYTHONWARNINGS']]
                        if 'PYTHONWARNINGS' in os.environ else [])
-    python_warnings.append(':'.join([
-        'ignore', '', 'FutureWarning', 'rpy2.robjects.pandas2ri']))
+    python_warnings.append(':'.join(
+        ['ignore', '', 'FutureWarning', 'rpy2.robjects.pandas2ri']))
     os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 if args.filter_warnings:
     if args.parallel_backend == 'multiprocessing':
@@ -1317,13 +1350,13 @@ if args.filter_warnings:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
         if 'convergence' in args.filter_warnings:
-            python_warnings.append(':'.join([
-                'ignore', 'Optimization did not converge', 'UserWarning']))
-            python_warnings.append(':'.join([
-                'ignore', 'Optimization terminated early', 'UserWarning']))
+            python_warnings.append(':'.join(
+                ['ignore', 'Optimization did not converge', 'UserWarning']))
+            python_warnings.append(':'.join(
+                ['ignore', 'Optimization terminated early', 'UserWarning']))
         if 'joblib' in args.filter_warnings:
-            python_warnings.append(':'.join([
-                'ignore', 'Persisting input arguments took', 'UserWarning']))
+            python_warnings.append(':'.join(
+                ['ignore', 'Persisting input arguments took', 'UserWarning']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
@@ -1370,8 +1403,8 @@ for cv_param, cv_param_values in cv_params.copy().items():
         if cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
             cv_params[cv_param[:-1]] = None
         continue
-    if cv_param in ('col_slr_cols', 'skb_slr_k', 'rfe_slr_step', 'de_slr_mb',
-                    'pwr_trf_meth', 'de_trf_mb', 'cnet_srv_l1r', 'cnet_srv_na',
+    if cv_param in ('col_slr_cols', 'skb_slr_k', 'de_slr_mb', 'pwr_trf_meth',
+                    'de_trf_mb', 'rfe_srv_step', 'cnet_srv_l1r', 'cnet_srv_na',
                     'fsvm_srv_rr', 'fsvm_srv_o'):
         cv_params[cv_param] = sorted(cv_param_values)
     elif cv_param == 'skb_slr_k_max':
@@ -1431,30 +1464,6 @@ pipe_config = {
         'param_grid': {
             'cols': cv_params['col_slr_cols']},
         'param_routing': ['feature_meta']},
-    'SelectFromUnivariateModel-CoxPHSurvivalAnalysis': {
-        'estimator': SelectFromUnivariateModel(CoxPHSurvivalAnalysis(
-            ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'estimator__alpha': cv_params['cph_srv_a']}},
-    'SelectFromUnivariateModel-FastSurvivalSVM': {
-        'estimator': SelectFromUnivariateModel(FastSurvivalSVM(
-            max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)),
-        'param_grid': {
-            'k': cv_params['skb_slr_k'],
-            'estimator__alpha': cv_params['fsvm_srv_a'],
-            'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
-            'estimator__optimizer': cv_params['fsvm_srv_o']}},
-    'RFE-FastSurvivalSVM': {
-        'estimator': RFE(fsvm_srv, tune_step_at=args.rfe_slr_tune_step_at,
-                         reducing_step=args.rfe_slr_reducing_step,
-                         verbose=args.rfe_slr_verbose),
-        'param_grid': {
-            'estimator__alpha': cv_params['fsvm_srv_a'],
-            'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
-            'estimator__optimizer': cv_params['fsvm_srv_o'],
-            'step': cv_params['rfe_slr_step'],
-            'n_features_to_select': cv_params['skb_slr_k']}},
     'EdgeRFilterByExpr': {
         'estimator': EdgeRFilterByExpr(is_classif=False),
         'param_grid': {
@@ -1465,9 +1474,9 @@ pipe_config = {
         'estimator': ExtendedColumnTransformer([], n_jobs=1,
                                                remainder='passthrough')},
     'OneHotEncoder': {
-        'estimator':  OneHotEncoder(handle_unknown='ignore', sparse=False)},
+        'estimator': OneHotEncoder(handle_unknown='ignore', sparse=False)},
     'LogTransformer': {
-        'estimator':  LogTransformer(base=2, shift=1)},
+        'estimator': LogTransformer(base=2, shift=1)},
     'PowerTransformer': {
         'estimator': PowerTransformer(),
         'param_grid': {
@@ -1490,20 +1499,62 @@ pipe_config = {
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
         'param_routing': ['sample_meta']},
-    # survival predictors
+    # survival analyzers
+    'SelectFromUnivariateModel-CoxPHSurvivalAnalysis': {
+        'estimator': SelectFromUnivariateModel(CoxPHSurvivalAnalysis(
+            ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)),
+        'param_grid': {
+            'k': cv_params['skb_slr_k'],
+            'estimator__alpha': cv_params['cph_srv_a']},
+        'param_routing': ['feature_meta']},
+    'SelectFromUnivariateModel-FastCoxPHSurvivalAnalysis': {
+        'estimator': SelectFromUnivariateModel(FastCoxPHSurvivalAnalysis(
+            fit_baseline_model=False, max_iter=args.cph_srv_max_iter,
+            normalize=False)),
+        'param_grid': {
+            'k': cv_params['skb_slr_k'],
+            'estimator__alpha': cv_params['cph_srv_a']},
+        'param_routing': ['feature_meta']},
+    'SelectFromUnivariateModel-FastSurvivalSVM': {
+        'estimator': SelectFromUnivariateModel(FastSurvivalSVM(
+            max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)),
+        'param_grid': {
+            'k': cv_params['skb_slr_k'],
+            'estimator__alpha': cv_params['fsvm_srv_a'],
+            'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
+            'estimator__optimizer': cv_params['fsvm_srv_o']},
+        'param_routing': ['feature_meta']},
+    'RFE-FastSurvivalSVM': {
+        'estimator': RFE(fsvm_srv, tune_step_at=args.rfe_srv_tune_step_at,
+                         reducing_step=args.rfe_srv_reducing_step,
+                         verbose=args.rfe_srv_verbose),
+        'param_grid': {
+            'estimator__alpha': cv_params['fsvm_srv_a'],
+            'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
+            'estimator__optimizer': cv_params['fsvm_srv_o'],
+            'step': cv_params['rfe_srv_step'],
+            'n_features_to_select': cv_params['skb_slr_k']}},
     'CoxPHSurvivalAnalysis': {
         'estimator': CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
                                            n_iter=args.cph_srv_n_iter),
         'param_grid': {
             'alpha': cv_params['cph_srv_a']}},
+    'FastCoxPHSurvivalAnalysis': {
+        'estimator': FastCoxPHSurvivalAnalysis(
+            fit_baseline_model=False, max_iter=args.cph_srv_max_iter,
+            normalize=False),
+        'param_grid': {
+            'alpha': cv_params['cph_srv_a']},
+        'param_routing': ['feature_meta']},
     'CoxnetSurvivalAnalysis': {
-        'estimator': CoxnetSurvivalAnalysis(
+        'estimator': ExtendedCoxnetSurvivalAnalysis(
             alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
             fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
             normalize=False),
         'param_grid': {
             'l1_ratio': cv_params['cnet_srv_l1r'],
-            'n_alphas': cv_params['cnet_srv_na']}},
+            'n_alphas': cv_params['cnet_srv_na']},
+        'param_routing': ['feature_meta']},
     'FastSurvivalSVM': {
         'estimator': FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
                                      random_state=args.random_seed),
@@ -1513,26 +1564,26 @@ pipe_config = {
             'optimizer': cv_params['fsvm_srv_o']}}}
 
 params_lin_xticks = [
-    'slr__k',
-    'slr__estimator__rank_ratio',
-    'slr__step',
-    'slr__n_features_to_select',
+    'srv__k',
+    'srv__n_features_to_select',
+    'srv__step',
+    'srv__estimator__rank_ratio',
     'srv__l1_ratio',
     'srv__n_alphas',
     'srv__rank_ratio']
 params_log_xticks = [
-    'slr__estimator__alpha',
     'srv__alpha',
-    'srv__alphas']
+    'srv__alphas',
+    'srv__estimator__alpha']
 params_fixed_xticks = [
     'slr',
     'slr__cols',
-    'slr__estimator__optimizer',
     'slr__model_batch',
     'trf',
     'trf__method',
     'trf__model_batch',
     'srv',
+    'srv__estimator__optimizer',
     'srv__optimizer']
 metric_label = {
     'score': 'C-index',
