@@ -123,7 +123,7 @@ def setup_pipe_and_param_grid(cmd_pipe_steps):
                             pipe_config[step_key]['param_grid'].items()):
                         if isinstance(param_values, (list, tuple, np.ndarray)):
                             if (isinstance(param_values, (list, tuple))
-                                    and param_values or np.any(param_values)):
+                                    and param_values or param_values.size > 0):
                                 uniq_step_param = '{}__{}'.format(
                                     uniq_step_name, param)
                                 if len(param_values) > 1:
@@ -1456,7 +1456,7 @@ for cv_param, cv_param_values in cv_params.copy().items():
     if cv_param in ('col_slr_cols', 'skb_slr_k', 'de_slr_mb', 'pwr_trf_meth',
                     'de_trf_mb', 'rfe_srv_step', 'cnet_srv_l1r', 'cnet_srv_na',
                     'fsvm_srv_rr', 'fsvm_srv_o'):
-        cv_params[cv_param] = sorted(cv_param_values)
+        cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
     elif cv_param == 'skb_slr_k_max':
         cv_param = '_'.join(cv_param.split('_')[:3])
         if (cv_params['{}_min'.format(cv_param)] == 1
