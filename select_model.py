@@ -1453,10 +1453,11 @@ for cv_param, cv_param_values in cv_params.copy().items():
         if cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
             cv_params[cv_param[:-1]] = None
         continue
-    if cv_param in ('col_slr_cols', 'skb_slr_k', 'de_slr_mb', 'pwr_trf_meth',
-                    'de_trf_mb', 'rfe_srv_step', 'cnet_srv_l1r', 'cnet_srv_na',
-                    'fsvm_srv_rr', 'fsvm_srv_o'):
+    if cv_param in ('col_slr_cols', 'skb_slr_k', 'rfe_srv_step',
+                    'cnet_srv_l1r', 'cnet_srv_na', 'fsvm_srv_rr'):
         cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
+    elif cv_param in ('de_slr_mb', 'de_trf_mb', 'pwr_trf_meth', 'fsvm_srv_o'):
+        cv_params[cv_param] = sorted(cv_param_values)
     elif cv_param == 'skb_slr_k_max':
         cv_param = '_'.join(cv_param.split('_')[:3])
         if (cv_params['{}_min'.format(cv_param)] == 1
