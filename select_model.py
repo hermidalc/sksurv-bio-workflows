@@ -53,12 +53,13 @@ pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
-    ColumnSelector, EdgeRFilterByExpr, RFE)
+    ColumnSelector, EdgeRFilterByExpr, NanoStringEndogenousSelector, RFE)
 from sklearn_extensions.model_selection import (ExtendedGridSearchCV,
                                                 ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
-    DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover, LogTransformer)
+    DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover, LogTransformer,
+    NanoStringNormalizer)
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import SelectFromUnivariateModel
 from sksurv_extensions.linear_model import (ExtendedCoxnetSurvivalAnalysis,
@@ -1233,6 +1234,12 @@ parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
                     help='PowerTransformer meth')
 parser.add_argument('--de-trf-mb', type=str_bool, nargs='+',
                     help='diff expr trf model batch')
+parser.add_argument('--nsn-trf-cc', type=str, nargs='+',
+                    help='NanoStringNormalizer code_count method')
+parser.add_argument('--nsn-trf-bg', type=str, nargs='+',
+                    help='NanoStringNormalizer background method')
+parser.add_argument('--nsn-trf-sc', type=str, nargs='+',
+                    help='NanoStringNormalizer sample_content method')
 parser.add_argument('--rfe-srv-step', type=float, nargs='+',
                     help='RFE step')
 parser.add_argument('--rfe-srv-tune-step-at', type=int,
@@ -1293,6 +1300,8 @@ parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
                     help='FastSurvivalSVM max_iter')
 parser.add_argument('--edger-prior-count', type=int, default=1,
                     help='edger prior count')
+parser.add_argument('--nano-meta-col', type=str, default='Code.Class',
+                    help='NanoString Code Class feature metadata column name')
 parser.add_argument('--scv-type', type=str,
                     choices=['grid', 'rand'], default='grid',
                     help='scv type')
@@ -1520,6 +1529,9 @@ pipe_config = {
         'param_grid': {
             'model_batch': cv_params['de_slr_mb']},
         'param_routing': ['sample_meta']},
+    'NanoStringEndogenousSelector': {
+        'estimator': NanoStringEndogenousSelector(meta_col=args.nano_meta_col),
+        'param_routing': ['feature_meta']},
     # transformers
     'ColumnTransformer': {
         'estimator': ExtendedColumnTransformer([], n_jobs=1,
@@ -1550,6 +1562,13 @@ pipe_config = {
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
         'param_routing': ['sample_meta']},
+    'NanoStringNormalizer': {
+        'estimator': NanoStringNormalizer(meta_col=args.nano_meta_col),
+        'param_grid': {
+            'code_count': cv_params['nsn_trf_cc'],
+            'background': cv_params['nsn_trf_bg'],
+            'sample_content': cv_params['nsn_trf_sc']},
+        'param_routing': ['feature_meta']},
     # survival analyzers
     'SelectFromUnivariateModel-CoxPHSurvivalAnalysis': {
         'estimator': SelectFromUnivariateModel(CoxPHSurvivalAnalysis(
@@ -1633,6 +1652,9 @@ params_fixed_xticks = [
     'trf',
     'trf__method',
     'trf__model_batch',
+    'trf__code_count',
+    'trf__background',
+    'trf__sample_content',
     'srv',
     'srv__estimator__optimizer',
     'srv__optimizer']
