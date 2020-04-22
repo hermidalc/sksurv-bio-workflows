@@ -614,7 +614,7 @@ def run_model_selection():
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
             n_jobs=args.n_jobs, param_grid=param_grid,
             param_routing=search_param_routing, refit=scv_refit,
-            return_train_score=False, scoring=args.scv_scoring,
+            return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
     elif args.scv_type == 'rand':
         search = ExtendedRandomizedSearchCV(
@@ -622,7 +622,7 @@ def run_model_selection():
             n_iter=args.scv_n_iter, n_jobs=args.n_jobs,
             param_distributions=param_grid, param_routing=search_param_routing,
             random_state=args.random_seed, refit=scv_refit,
-            return_train_score=False, scoring=args.scv_scoring,
+            return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
     if args.verbose > 0:
         print(search.__repr__(N_CHAR_MAX=10000))
