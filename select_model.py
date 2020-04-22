@@ -12,6 +12,8 @@ from shutil import rmtree
 from tempfile import mkdtemp, gettempdir
 
 warnings.filterwarnings('ignore', category=FutureWarning,
+                        module='sklearn.utils.deprecation')
+warnings.filterwarnings('ignore', category=FutureWarning,
                         module='rpy2.robjects.pandas2ri')
 
 import matplotlib.pyplot as plt
@@ -609,16 +611,18 @@ def run_model_selection():
         cv_splitter = GroupKFold(n_splits=args.scv_splits)
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
-            pipe, cv=cv_splitter, error_score=0, n_jobs=args.n_jobs,
-            param_grid=param_grid, param_routing=search_param_routing,
-            refit=scv_refit, return_train_score=False, scoring=scv_scoring,
+            pipe, cv=cv_splitter, error_score=args.scv_error_score,
+            n_jobs=args.n_jobs, param_grid=param_grid,
+            param_routing=search_param_routing, refit=scv_refit,
+            return_train_score=False, scoring=args.scv_scoring,
             verbose=args.scv_verbose)
     elif args.scv_type == 'rand':
         search = ExtendedRandomizedSearchCV(
-            pipe, cv=cv_splitter, error_score=0, n_iter=args.scv_n_iter,
-            n_jobs=args.n_jobs, param_distributions=param_grid,
-            param_routing=search_param_routing, random_state=args.random_seed,
-            refit=scv_refit, return_train_score=False, scoring=scv_scoring,
+            pipe, cv=cv_splitter, error_score=args.scv_error_score,
+            n_iter=args.scv_n_iter, n_jobs=args.n_jobs,
+            param_distributions=param_grid, param_routing=search_param_routing,
+            random_state=args.random_seed, refit=scv_refit,
+            return_train_score=False, scoring=args.scv_scoring,
             verbose=args.scv_verbose)
     if args.verbose > 0:
         print(search.__repr__(N_CHAR_MAX=10000))
@@ -1323,6 +1327,8 @@ parser.add_argument('--scv-refit', type=str,
                     help='scv refit scoring metric')
 parser.add_argument('--scv-n-iter', type=int, default=100,
                     help='randomized scv num iterations')
+parser.add_argument('--scv-error-score', type=str, default='nan',
+                    help='scv error score')
 parser.add_argument('--scv-use-ssplit', default=False, action='store_true',
                     help='scv ShuffleSplit variants instead of KFold')
 parser.add_argument('--test-splits', type=int, default=10,
@@ -1382,6 +1388,10 @@ if args.test_size >= 1.0:
     args.test_size = int(args.test_size)
 if args.scv_size >= 1.0:
     args.scv_size = int(args.scv_size)
+if args.scv_error_score.isdigit():
+    args.scv_error_score = int(args.scv_error_score)
+elif args.scv_error_score == 'nan':
+    args.scv_error_score = np.nan
 if args.scv_verbose is None:
     args.scv_verbose = args.verbose
 if args.scv_scoring is None:
@@ -1391,6 +1401,8 @@ if args.scv_scoring is None:
 if args.parallel_backend != 'multiprocessing':
     python_warnings = ([os.environ['PYTHONWARNINGS']]
                        if 'PYTHONWARNINGS' in os.environ else [])
+    python_warnings.append(':'.join(
+        ['ignore', '', 'FutureWarning', 'sklearn.utils.deprecation']))
     python_warnings.append(':'.join(
         ['ignore', '', 'FutureWarning', 'rpy2.robjects.pandas2ri']))
     os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
