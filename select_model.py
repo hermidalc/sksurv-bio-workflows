@@ -1216,6 +1216,8 @@ parser.add_argument('--col-trf-patterns', type=str, nargs='+',
 parser.add_argument('--col-trf-dtypes', type=str, nargs='+',
                     choices=['category', 'float', 'int'],
                     help='ColumnTransformer column dtypes')
+parser.add_argument('--col-trf-remainder', type=str, default='passthrough',
+                    help='ColumnTransfomer remainder')
 parser.add_argument('--sample-meta-stat-col', type=str, default='Status',
                     help='sample metadata survival status column name')
 parser.add_argument('--sample-meta-surv-col', type=str,
@@ -1557,8 +1559,8 @@ pipe_config = {
         'param_routing': ['feature_meta']},
     # transformers
     'ColumnTransformer': {
-        'estimator': ExtendedColumnTransformer([], n_jobs=1,
-                                               remainder='passthrough')},
+        'estimator': ExtendedColumnTransformer(
+            [], n_jobs=1, remainder=args.col_trf_remainder)},
     'OneHotEncoder': {
         'estimator': OneHotEncoder(handle_unknown='ignore', sparse=False)},
     'LogTransformer': {
