@@ -9,6 +9,8 @@ dependencies:
   - bioconductor-biobase
   - bioconductor-deseq2
   - bioconductor-edger
+  - bioconductor-nanostringdiff
+  - bioconductor-ruvseq
   - bioconductor-sva
   - eli5
   - joblib>=0.14
@@ -23,13 +25,14 @@ dependencies:
   - r-base
   - r-essentials
   - r-fnn
+  - r-fuzzyranktests
   - r-lme4
   - r-minqa
   - r-mnormt
   - r-nloptr
   - r-statmod
   - rpy2
-  - scikit-learn<=0.22.1
+  - scikit-learn=0.22.1
   - scikit-survival
   - seaborn
   - tabulate
