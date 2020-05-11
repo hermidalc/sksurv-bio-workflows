@@ -1268,15 +1268,17 @@ parser.add_argument('--skb-slr-k-max', type=int,
                     help='Selector k max features')
 parser.add_argument('--skb-slr-k-step', type=int, default=1,
                     help='Selector k step features')
-parser.add_argument('--de-slr-mb', type=str_bool, nargs='+',
-                    help='diff expr slr model batch')
+parser.add_argument('--rna-slr-mb', type=str_bool, nargs='+',
+                    help='RNA slr model batch')
 parser.add_argument('--mms-trf-feature-range', type=int_list, default=(0, 1),
                     help='MinMaxScaler feature range')
 parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
                     choices=['box-cox', 'yeo-johnson'],
                     help='PowerTransformer meth')
-parser.add_argument('--de-trf-mb', type=str_bool, nargs='+',
-                    help='diff expr trf model batch')
+parser.add_argument('--rna-trf-ft', type=str, nargs='+',
+                    help='RNA trf fit type')
+parser.add_argument('--rna-trf-mb', type=str_bool, nargs='+',
+                    help='RNA trf model batch')
 parser.add_argument('--nsn-trf-cc', type=str, nargs='+',
                     help='NanoStringNormalizer code_count')
 parser.add_argument('--nsn-trf-bg', type=str, nargs='+',
@@ -1518,9 +1520,9 @@ for cv_param, cv_param_values in cv_params.copy().items():
     if cv_param in ('col_slr_cols', 'skb_slr_k', 'rfe_srv_step',
                     'cnet_srv_l1r', 'cnet_srv_na', 'fsvm_srv_rr'):
         cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
-    elif cv_param in ('de_slr_mb', 'de_trf_mb', 'nsn_trf_cc', 'nsn_trf_bg',
-                      'nsn_trf_bg_t', 'nsn_trf_sc', 'pwr_trf_meth',
-                      'fsvm_srv_o'):
+    elif cv_param in ('rna_slr_mb', 'rna_trf_ft', 'rna_trf_mb', 'nsn_trf_cc',
+                      'nsn_trf_bg', 'nsn_trf_bg_t', 'nsn_trf_sc',
+                      'pwr_trf_meth', 'fsvm_srv_o'):
         cv_params[cv_param] = sorted(cv_param_values)
     elif cv_param == 'skb_slr_k_max':
         cv_param = '_'.join(cv_param.split('_')[:3])
@@ -1582,7 +1584,7 @@ pipe_config = {
     'EdgeRFilterByExpr': {
         'estimator': EdgeRFilterByExpr(is_classif=False),
         'param_grid': {
-            'model_batch': cv_params['de_slr_mb']},
+            'model_batch': cv_params['rna_slr_mb']},
         'param_routing': ['sample_meta']},
     'NanoStringEndogenousSelector': {
         'estimator': NanoStringEndogenousSelector(meta_col=args.nano_meta_col),
@@ -1608,7 +1610,8 @@ pipe_config = {
     'DESeq2RLEVST': {
         'estimator': DESeq2RLEVST(is_classif=False, memory=memory),
         'param_grid': {
-            'model_batch': cv_params['de_trf_mb']},
+            'fit_type': cv_params['rna_trf_ft'],
+            'model_batch': cv_params['rna_trf_mb']},
         'param_routing': ['sample_meta']},
     'EdgeRTMMLogCPM': {
         'estimator': EdgeRTMMLogCPM(memory=memory,
