@@ -16,6 +16,7 @@ dependencies:
   - joblib>=0.14
   - libblas=*=*mkl
   - libopenblas
+  - lifelines
   - matplotlib
   - natsort
   - numpy

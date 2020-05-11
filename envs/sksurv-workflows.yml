@@ -15,6 +15,7 @@ dependencies:
   - eli5
   - joblib>=0.14
   - libopenblas
+  - lifelines
   - matplotlib
   - natsort
   - numpy
