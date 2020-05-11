@@ -1633,8 +1633,9 @@ pipe_config = {
         'param_routing': ['feature_meta']},
     # survival analyzers
     'SelectFromUnivariateSurvivalModel-CoxPHSurvivalAnalysis': {
-        'estimator': SelectFromUnivariateSurvivalModel(CoxPHSurvivalAnalysis(
-            ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter)),
+        'estimator': SelectFromUnivariateSurvivalModel(
+            CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
+                                  n_iter=args.cph_srv_n_iter), memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']},
@@ -1643,14 +1644,15 @@ pipe_config = {
         'estimator': SelectFromUnivariateSurvivalModel(
             FastCoxPHSurvivalAnalysis(fit_baseline_model=False,
                                       max_iter=args.cph_srv_max_iter,
-                                      normalize=False)),
+                                      normalize=False), memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']},
         'param_routing': ['feature_meta']},
     'SelectFromUnivariateSurvivalModel-FastSurvivalSVM': {
-        'estimator': SelectFromUnivariateSurvivalModel(FastSurvivalSVM(
-            max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed)),
+        'estimator': SelectFromUnivariateSurvivalModel(
+            FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
+                            random_state=args.random_seed), memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['fsvm_srv_a'],
