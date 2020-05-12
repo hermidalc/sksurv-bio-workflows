@@ -365,6 +365,7 @@ def transform_feature_meta(pipe, feature_meta):
                 or (hasattr(final_estimator, 'estimator_') and isinstance(
                     final_estimator.estimator_, CoxnetSurvivalAnalysis))):
             feature_weights = np.ravel(feature_weights)
+            transformed_feature_meta = transformed_feature_meta.copy()
             transformed_feature_meta = (
                 transformed_feature_meta.loc[feature_weights != 0])
             feature_weights = feature_weights[feature_weights != 0]
