@@ -568,28 +568,29 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
                 .alphas_[-1])
     cnet_pipe_alpha_maxs = np.min(cnet_pipe_alpha_maxs, axis=1)
     cnet_pipe_alpha_mins = np.max(cnet_pipe_alpha_mins, axis=1)
-    alpha_max_exps = np.floor(np.log10(cnet_pipe_alpha_maxs))
-    cnet_pipe_alpha_maxs[alpha_max_exps >= 1] = np.floor(
-        cnet_pipe_alpha_maxs[alpha_max_exps >= 1])
-    cnet_pipe_alpha_maxs[(alpha_max_exps < 1) & (alpha_max_exps >= 0)] = (
-        np.floor(cnet_pipe_alpha_maxs[
-            (alpha_max_exps < 1) & (alpha_max_exps >= 0)] * 10)
-        / 10)
-    cnet_pipe_alpha_maxs[alpha_max_exps < 0] = (
-        np.floor(cnet_pipe_alpha_maxs[alpha_max_exps < 0]
-                 * 10 ** -alpha_max_exps[alpha_max_exps < 0])
-        * 10 ** alpha_max_exps[alpha_max_exps < 0])
-    alpha_min_exps = np.floor(np.log10(cnet_pipe_alpha_mins))
-    cnet_pipe_alpha_mins[alpha_min_exps >= 1] = np.ceil(
-        cnet_pipe_alpha_mins[alpha_min_exps >= 1])
-    cnet_pipe_alpha_mins[(alpha_min_exps < 1) & (alpha_min_exps >= 0)] = (
-        np.ceil(cnet_pipe_alpha_mins[
-            (alpha_min_exps < 1) & (alpha_min_exps >= 0)] * 10)
-        / 10)
-    cnet_pipe_alpha_mins[alpha_min_exps < 0] = (
-        np.ceil(cnet_pipe_alpha_mins[alpha_min_exps < 0]
-                * 10 ** -alpha_min_exps[alpha_min_exps < 0])
-        * 10 ** alpha_min_exps[alpha_min_exps < 0])
+    if args.cnet_srv_clip_alpha_range:
+        alpha_max_exps = np.floor(np.log10(cnet_pipe_alpha_maxs))
+        cnet_pipe_alpha_maxs[alpha_max_exps >= 1] = np.floor(
+            cnet_pipe_alpha_maxs[alpha_max_exps >= 1])
+        cnet_pipe_alpha_maxs[(alpha_max_exps < 1) & (alpha_max_exps >= 0)] = (
+            np.floor(cnet_pipe_alpha_maxs[
+                (alpha_max_exps < 1) & (alpha_max_exps >= 0)] * 10)
+            / 10)
+        cnet_pipe_alpha_maxs[alpha_max_exps < 0] = (
+            np.floor(cnet_pipe_alpha_maxs[alpha_max_exps < 0]
+                     * 10 ** -alpha_max_exps[alpha_max_exps < 0])
+            * 10 ** alpha_max_exps[alpha_max_exps < 0])
+        alpha_min_exps = np.floor(np.log10(cnet_pipe_alpha_mins))
+        cnet_pipe_alpha_mins[alpha_min_exps >= 1] = np.ceil(
+            cnet_pipe_alpha_mins[alpha_min_exps >= 1])
+        cnet_pipe_alpha_mins[(alpha_min_exps < 1) & (alpha_min_exps >= 0)] = (
+            np.ceil(cnet_pipe_alpha_mins[
+                (alpha_min_exps < 1) & (alpha_min_exps >= 0)] * 10)
+            / 10)
+        cnet_pipe_alpha_mins[alpha_min_exps < 0] = (
+            np.ceil(cnet_pipe_alpha_mins[alpha_min_exps < 0]
+                    * 10 ** -alpha_min_exps[alpha_min_exps < 0])
+            * 10 ** alpha_min_exps[alpha_min_exps < 0])
     param_grid = []
     cnet_pipes_idx = 0
     cnet_srv_a_param = '{}__alphas'.format(srv_step_name)
@@ -1348,6 +1349,9 @@ parser.add_argument('--cnet-srv-alpha-min-ratio', type=float, default=0.1,
                     help='CoxnetSurvivalAnalysis alpha_min_ratio')
 parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
                     help='CoxnetSurvivalAnalysis max_iter')
+parser.add_argument('--cnet-srv-clip-alpha-range', default=False,
+                    action='store_true',
+                    help='CoxnetSurvivalAnalysis clip alpha range')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
