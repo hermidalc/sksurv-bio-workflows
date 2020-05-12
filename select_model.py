@@ -987,6 +987,9 @@ def run_model_selection():
                                               random_state=args.random_seed)
         else:
             test_splitter = GroupKFold(n_splits=args.test_splits)
+        if args.verbose > 0:
+            print('Test CV:', end=' ')
+            pprint(test_splitter)
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             base_search = clone(search)
         for split_idx, (train_idxs, test_idxs) in enumerate(
