@@ -35,7 +35,7 @@ from rpy2.robjects import numpy2ri, pandas2ri
 from rpy2.robjects.packages import importr
 from sklearn.base import BaseEstimator, clone, is_classifier, is_regressor
 from sklearn.compose import ColumnTransformer
-from sklearn.exceptions import ConvergenceWarning
+from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
 from sklearn.model_selection import (GroupKFold, GroupShuffleSplit, KFold,
                                      ParameterGrid, ParameterSampler,
                                      ShuffleSplit)
@@ -1442,7 +1442,7 @@ parser.add_argument('--random-seed', type=int, default=777,
 parser.add_argument('--jvm-heap-size', type=int, default=500,
                     help='rjava jvm heap size')
 parser.add_argument('--filter-warnings', type=str, nargs='+',
-                    choices=['convergence', 'joblib'],
+                    choices=['convergence', 'joblib', 'fitfailed'],
                     help='filter warnings')
 parser.add_argument('--verbose', type=int, default=1,
                     help='program verbosity')
@@ -1484,6 +1484,10 @@ if args.filter_warnings:
             warnings.filterwarnings(
                 'ignore', category=UserWarning,
                 message='^Persisting input arguments took')
+        if 'fitfailed' in args.filter_warnings:
+            warnings.filterwarnings(
+                'ignore', category=FitFailedWarning,
+                message='^Estimator fit failed')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
@@ -1495,6 +1499,9 @@ if args.filter_warnings:
         if 'joblib' in args.filter_warnings:
             python_warnings.append(':'.join(
                 ['ignore', 'Persisting input arguments took', 'UserWarning']))
+        if 'fitfailed' in args.filter_warnings:
+            python_warnings.append(':'.join(
+                ['ignore', 'Estimator fit failed', 'UserWarning']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
