@@ -1506,7 +1506,7 @@ if args.filter_warnings:
                 ['ignore', 'Persisting input arguments took', 'UserWarning']))
         if 'fitfailed' in args.filter_warnings:
             python_warnings.append(':'.join(
-                ['ignore', 'Estimator fit failed', 'UserWarning']))
+                ['ignore', 'Estimator fit failed', 'RuntimeWarning']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
