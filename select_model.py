@@ -65,6 +65,7 @@ from sklearn_extensions.preprocessing import (
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import (
     SelectFromUnivariateSurvivalModel)
+from sksurv_extensions.model_selection import SurvivalStratifiedKFold
 from sksurv_extensions.linear_model import (ExtendedCoxnetSurvivalAnalysis,
                                             FastCoxPHSurvivalAnalysis)
 from sksurv_extensions.svm import CachedFastSurvivalSVM
@@ -752,8 +753,9 @@ def run_model_selection():
                                        test_size=args.scv_size,
                                        random_state=args.random_seed)
         else:
-            cv_splitter = KFold(n_splits=args.scv_splits,
-                                random_state=args.random_seed, shuffle=True)
+            cv_splitter = SurvivalStratifiedKFold(
+                n_splits=args.scv_splits, random_state=args.random_seed,
+                shuffle=True)
     elif args.scv_use_ssplit:
         cv_splitter = GroupShuffleSplit(n_splits=args.scv_splits,
                                         test_size=args.scv_size,
@@ -980,9 +982,9 @@ def run_model_selection():
                                              test_size=args.test_size,
                                              random_state=args.random_seed)
             else:
-                test_splitter = KFold(n_splits=args.test_splits,
-                                      random_state=args.random_seed,
-                                      shuffle=True)
+                test_splitter = SurvivalStratifiedKFold(
+                    n_splits=args.test_splits, random_state=args.random_seed,
+                    shuffle=True)
         elif args.test_use_ssplit:
             test_splitter = GroupShuffleSplit(n_splits=args.test_splits,
                                               test_size=args.test_size,
