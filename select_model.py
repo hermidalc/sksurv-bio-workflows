@@ -65,7 +65,8 @@ from sklearn_extensions.preprocessing import (
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import (
     SelectFromUnivariateSurvivalModel)
-from sksurv_extensions.model_selection import SurvivalStratifiedKFold
+from sksurv_extensions.model_selection import (RepeatedSurvivalStratifiedKFold,
+                                               SurvivalStratifiedKFold)
 from sksurv_extensions.linear_model import (ExtendedCoxnetSurvivalAnalysis,
                                             FastCoxPHSurvivalAnalysis)
 from sksurv_extensions.svm import CachedFastSurvivalSVM
@@ -752,6 +753,10 @@ def run_model_selection():
             cv_splitter = ShuffleSplit(n_splits=args.scv_splits,
                                        test_size=args.scv_size,
                                        random_state=args.random_seed)
+        elif args.scv_repeats > 0:
+            cv_splitter = RepeatedSurvivalStratifiedKFold(
+                n_splits=args.scv_splits, n_repeats=args.scv_repeats,
+                random_state=args.random_seed)
         else:
             cv_splitter = SurvivalStratifiedKFold(
                 n_splits=args.scv_splits, random_state=args.random_seed,
@@ -981,6 +986,10 @@ def run_model_selection():
                 test_splitter = ShuffleSplit(n_splits=args.test_splits,
                                              test_size=args.test_size,
                                              random_state=args.random_seed)
+            elif args.test_repeats > 0:
+                test_splitter = RepeatedSurvivalStratifiedKFold(
+                    n_splits=args.test_splits, n_repeats=args.test_repeats,
+                    random_state=args.random_seed)
             else:
                 test_splitter = SurvivalStratifiedKFold(
                     n_splits=args.test_splits, random_state=args.random_seed,
@@ -1384,6 +1393,8 @@ parser.add_argument('--scv-type', type=str,
                     help='scv type')
 parser.add_argument('--scv-splits', type=int, default=10,
                     help='scv splits')
+parser.add_argument('--scv-repeats', type=int, default=0,
+                    help='scv repeats')
 parser.add_argument('--scv-size', type=float, default=0.2,
                     help='scv size')
 parser.add_argument('--scv-verbose', type=int,
@@ -1406,6 +1417,8 @@ parser.add_argument('--scv-use-ssplit', default=False, action='store_true',
                     help='scv ShuffleSplit variants instead of KFold')
 parser.add_argument('--test-splits', type=int, default=10,
                     help='num outer splits')
+parser.add_argument('--test-repeats', type=int, default=0,
+                    help='num outer repeats')
 parser.add_argument('--test-size', type=float, default=0.2,
                     help='outer splits test size')
 parser.add_argument('--test-use-ssplit', default=False, action='store_true',
