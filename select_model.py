@@ -43,7 +43,7 @@ from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
 from sksurv.base import SurvivalAnalysisMixin
-from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
+from sksurv.linear_model import CoxnetSurvivalAnalysis
 from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
                             cumulative_dynamic_auc)
 from sksurv.svm import FastSurvivalSVM
@@ -67,8 +67,9 @@ from sksurv_extensions.feature_selection import (
     SelectFromUnivariateSurvivalModel)
 from sksurv_extensions.model_selection import (RepeatedSurvivalStratifiedKFold,
                                                SurvivalStratifiedKFold)
-from sksurv_extensions.linear_model import (ExtendedCoxnetSurvivalAnalysis,
-                                            FastCoxPHSurvivalAnalysis)
+from sksurv_extensions.linear_model import (
+    ExtendedCoxnetSurvivalAnalysis, ExtendedCoxPHSurvivalAnalysis,
+    FastCoxPHSurvivalAnalysis)
 from sksurv_extensions.svm import CachedFastSurvivalSVM
 
 
@@ -1343,7 +1344,7 @@ parser.add_argument('--cph-srv-num-alphas', type=int, default=10,
                     help='CoxPHSurvivalAnalysis num alphas')
 parser.add_argument('--cph-srv-ties', type=str, default='efron',
                     help='CoxPHSurvivalAnalysis ties')
-parser.add_argument('--cph-srv-n-iter', type=int, default=100,
+parser.add_argument('--cph-srv-n-iter', type=int, default=1000,
                     help='CoxPHSurvivalAnalysis n_iter')
 parser.add_argument('--cph-srv-max-iter', type=int, default=1000000,
                     help='FastCoxPHSurvivalAnalysis max_iter')
@@ -1684,8 +1685,9 @@ pipe_config = {
     # survival analyzers
     'SelectFromUnivariateSurvivalModel-CoxPHSurvivalAnalysis': {
         'estimator': SelectFromUnivariateSurvivalModel(
-            CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
-                                  n_iter=args.cph_srv_n_iter), memory=memory),
+            ExtendedCoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
+                                          n_iter=args.cph_srv_n_iter),
+            memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']},
@@ -1720,10 +1722,11 @@ pipe_config = {
             'step': cv_params['rfe_srv_step'],
             'n_features_to_select': cv_params['skb_slr_k']}},
     'CoxPHSurvivalAnalysis': {
-        'estimator': CoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
-                                           n_iter=args.cph_srv_n_iter),
+        'estimator': ExtendedCoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
+                                                   n_iter=args.cph_srv_n_iter),
         'param_grid': {
-            'alpha': cv_params['cph_srv_a']}},
+            'alpha': cv_params['cph_srv_a']},
+        'param_routing': ['feature_meta']},
     'FastCoxPHSurvivalAnalysis': {
         'estimator': FastCoxPHSurvivalAnalysis(
             fit_baseline_model=False, max_iter=args.cph_srv_max_iter,
