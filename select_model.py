@@ -1368,6 +1368,8 @@ parser.add_argument('--cph-srv-ties', type=str, default='efron',
                     help='CoxPHSurvivalAnalysis ties')
 parser.add_argument('--cph-srv-n-iter', type=int, default=1000,
                     help='CoxPHSurvivalAnalysis n_iter')
+parser.add_argument('--cph-srv-base-alpha', type=float, default=1e-5,
+                    help='CoxPHSurvivalAnalysis base_alpha')
 parser.add_argument('--cph-srv-max-iter', type=int, default=1000000,
                     help='FastCoxPHSurvivalAnalysis max_iter')
 parser.add_argument('--cnet-srv-l1r', type=float, nargs='+',
@@ -1708,7 +1710,8 @@ pipe_config = {
     'SelectFromUnivariateSurvivalModel-CoxPHSurvivalAnalysis': {
         'estimator': SelectFromUnivariateSurvivalModel(
             ExtendedCoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
-                                          n_iter=args.cph_srv_n_iter),
+                                          n_iter=args.cph_srv_n_iter,
+                                          base_alpha=args.cph_srv_base_alpha),
             memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
@@ -1744,8 +1747,9 @@ pipe_config = {
             'step': cv_params['rfe_srv_step'],
             'n_features_to_select': cv_params['skb_slr_k']}},
     'CoxPHSurvivalAnalysis': {
-        'estimator': ExtendedCoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
-                                                   n_iter=args.cph_srv_n_iter),
+        'estimator': ExtendedCoxPHSurvivalAnalysis(
+            ties=args.cph_srv_ties, n_iter=args.cph_srv_n_iter,
+            base_alpha=args.cph_srv_base_alpha),
         'param_grid': {
             'alpha': cv_params['cph_srv_a']},
         'param_routing': ['feature_meta']},
