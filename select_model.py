@@ -384,11 +384,13 @@ def transform_feature_meta(pipe, feature_meta):
                 or (hasattr(final_estimator, 'estimator_') and isinstance(
                     final_estimator.estimator_, CoxnetSurvivalAnalysis))):
             feature_weights = np.ravel(feature_weights)
-            transformed_feature_meta = transformed_feature_meta.copy()
-            transformed_feature_meta = (
-                transformed_feature_meta.loc[feature_weights != 0])
-            feature_weights = feature_weights[feature_weights != 0]
-        transformed_feature_meta['Weight'] = feature_weights
+        feature_mask = feature_weights != 0
+        if args.penalty_factor_meta_col in transformed_feature_meta.columns:
+            feature_mask[transformed_feature_meta[args.penalty_factor_meta_col]
+                         == 0] = True
+        transformed_feature_meta = transformed_feature_meta.copy()
+        transformed_feature_meta = transformed_feature_meta.loc[feature_mask]
+        transformed_feature_meta['Weight'] = feature_weights[feature_mask]
     transformed_feature_meta.index.rename('Feature', inplace=True)
     return transformed_feature_meta
 
