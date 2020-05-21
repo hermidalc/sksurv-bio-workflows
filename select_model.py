@@ -36,9 +36,8 @@ from rpy2.robjects.packages import importr
 from sklearn.base import BaseEstimator, clone, is_classifier, is_regressor
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
-from sklearn.model_selection import (GroupKFold, GroupShuffleSplit, KFold,
-                                     ParameterGrid, ParameterSampler,
-                                     ShuffleSplit)
+from sklearn.model_selection import (GroupShuffleSplit, KFold, ParameterGrid,
+                                     ParameterSampler, ShuffleSplit)
 from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
@@ -65,8 +64,9 @@ from sklearn_extensions.preprocessing import (
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import (
     SelectFromUnivariateSurvivalModel)
-from sksurv_extensions.model_selection import (RepeatedSurvivalStratifiedKFold,
-                                               SurvivalStratifiedKFold)
+from sksurv_extensions.model_selection import (
+    SurvivalStratifiedKFold, SurvivalStratifiedGroupKFold,
+    RepeatedSurvivalStratifiedKFold, RepeatedSurvivalStratifiedGroupKFold)
 from sksurv_extensions.linear_model import (
     ExtendedCoxnetSurvivalAnalysis, ExtendedCoxPHSurvivalAnalysis,
     FastCoxPHSurvivalAnalysis)
@@ -784,8 +784,14 @@ def run_model_selection():
         cv_splitter = GroupShuffleSplit(n_splits=args.scv_splits,
                                         test_size=args.scv_size,
                                         random_state=args.random_seed)
+    elif args.scv_repeats > 0:
+        cv_splitter = RepeatedSurvivalStratifiedGroupKFold(
+            n_splits=args.scv_splits, n_repeats=args.scv_repeats,
+            random_state=args.random_seed)
     else:
-        cv_splitter = GroupKFold(n_splits=args.scv_splits)
+        cv_splitter = SurvivalStratifiedGroupKFold(
+            n_splits=args.scv_splits, random_state=args.random_seed,
+            shuffle=True)
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
@@ -1017,8 +1023,14 @@ def run_model_selection():
             test_splitter = GroupShuffleSplit(n_splits=args.test_splits,
                                               test_size=args.test_size,
                                               random_state=args.random_seed)
+        elif args.test_repeats > 0:
+            test_splitter = RepeatedSurvivalStratifiedGroupKFold(
+                n_splits=args.test_splits, n_repeats=args.test_repeats,
+                random_state=args.random_seed)
         else:
-            test_splitter = GroupKFold(n_splits=args.test_splits)
+            test_splitter = SurvivalStratifiedGroupKFold(
+                n_splits=args.test_splits, random_state=args.random_seed,
+                shuffle=True)
         if args.verbose > 0:
             print('Test CV:', end=' ')
             pprint(test_splitter)
