@@ -239,11 +239,20 @@ def load_dataset(dataset_file):
             is_category = (is_categorical_dtype(sample_meta[sample_meta_col])
                            or is_object_dtype(sample_meta[sample_meta_col])
                            or is_string_dtype(sample_meta[sample_meta_col]))
-            num_unique_cat = sample_meta[sample_meta_col].unique().size
-            if args.test_dataset or not is_category or num_unique_cat > 2:
+            num_categories = sample_meta[sample_meta_col].unique().size
+            if args.test_dataset or not is_category:
                 X[sample_meta_col] = sample_meta[sample_meta_col]
                 new_feature_names.append(sample_meta_col)
-            elif num_unique_cat == 2:
+            elif num_categories > 2:
+                ohe = OneHotEncoder(sparse=False)
+                ohe.fit(sample_meta[[sample_meta_col]])
+                for category in ohe.categories_[0]:
+                    new_sample_meta_col = '{}_{}'.format(
+                        sample_meta_col, category)
+                    X[new_sample_meta_col] = ohe.transform(
+                        sample_meta[[sample_meta_col]])
+                    new_feature_names.append(new_sample_meta_col)
+            elif num_categories == 2:
                 ohe = OneHotEncoder(drop='first', sparse=False)
                 ohe.fit(sample_meta[[sample_meta_col]])
                 new_sample_meta_col = '{}_{}'.format(
