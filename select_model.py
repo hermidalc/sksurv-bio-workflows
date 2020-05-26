@@ -66,7 +66,9 @@ from sksurv_extensions.feature_selection import (
     SelectFromUnivariateSurvivalModel)
 from sksurv_extensions.model_selection import (
     SurvivalStratifiedKFold, SurvivalStratifiedGroupKFold,
-    RepeatedSurvivalStratifiedKFold, RepeatedSurvivalStratifiedGroupKFold)
+    SurvivalStratifiedSampleFromGroupKFold, RepeatedSurvivalStratifiedKFold,
+    RepeatedSurvivalStratifiedGroupKFold,
+    RepeatedSurvivalStratifiedSampleFromGroupKFold)
 from sksurv_extensions.linear_model import (
     ExtendedCoxnetSurvivalAnalysis, ExtendedCoxPHSurvivalAnalysis,
     FastCoxPHSurvivalAnalysis)
@@ -564,7 +566,7 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
             cnet_pipe.set_params(**params)
             cnet_pipes.append(clone(cnet_pipe))
     print('Calculating CoxnetSurvivalAnalysis alphas for {} pipelines'
-          .format(len(cnet_pipes)))
+          .format(len(cnet_pipes)), end='\n' if args.scv_verbose > 0 else ' ')
     fitted_cnet_pipes = Parallel(
         n_jobs=args.n_jobs, backend=args.parallel_backend,
         verbose=args.scv_verbose)(
@@ -573,12 +575,15 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
                 param_routing=cnet_pipe.param_routing,
                 fit_params=pipe_fit_params)
             for cnet_pipe in cnet_pipes)
+    if args.scv_verbose == 0:
+        print()
     cnet_pipe_alpha_maxs, cnet_pipe_alpha_mins = [], []
     for fitted_cnet_pipe in fitted_cnet_pipes:
         cnet_pipe_alpha_maxs.append([fitted_cnet_pipe[-1].alphas_[0]])
         cnet_pipe_alpha_mins.append([fitted_cnet_pipe[-1].alphas_[-1]])
     print('Calculating CoxnetSurvivalAnalysis alphas for {} CV x {} pipelines'
-          .format(search.cv.get_n_splits(), len(cnet_pipes)))
+          .format(search.cv.get_n_splits(), len(cnet_pipes)),
+          end='\n' if args.scv_verbose > 0 else ' ')
     train_idx_data = []
     for train_idxs, _ in search.cv.split(X, y, groups):
         train_pipe_fit_params = {}
@@ -604,6 +609,8 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
                 fit_params=train_fit_params)
             for X_train, y_train, train_fit_params in train_idx_data
             for cnet_pipe in cnet_pipes)
+    if args.scv_verbose == 0:
+        print()
     for train_group_idx in range(0, len(fitted_cnet_pipes), len(cnet_pipes)):
         for cnet_pipes_idx, _ in enumerate(cnet_pipes):
             cnet_pipe_alpha_maxs[cnet_pipes_idx].append(
@@ -807,11 +814,28 @@ def run_model_selection():
                                         test_size=args.scv_size,
                                         random_state=args.random_seed)
     elif args.scv_repeats > 0:
-        cv_splitter = RepeatedSurvivalStratifiedGroupKFold(
-            n_splits=args.scv_splits, n_repeats=args.scv_repeats,
-            random_state=args.random_seed)
-    else:
+        if 'sample_weight' in search_param_routing['estimator']:
+            cv_splitter = RepeatedSurvivalStratifiedGroupKFold(
+                n_splits=args.scv_splits, n_repeats=args.scv_repeats,
+                random_state=args.random_seed)
+        elif args.test_dataset:
+            cv_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
+                n_splits=args.scv_splits, n_repeats=args.scv_repeats,
+                random_state=args.random_seed)
+        else:
+            cv_splitter = RepeatedSurvivalStratifiedKFold(
+                n_splits=args.scv_splits, n_repeats=args.scv_repeats,
+                random_state=args.random_seed)
+    elif 'sample_weight' in search_param_routing['estimator']:
         cv_splitter = SurvivalStratifiedGroupKFold(
+            n_splits=args.scv_splits, random_state=args.random_seed,
+            shuffle=True)
+    elif args.test_dataset:
+        cv_splitter = SurvivalStratifiedSampleFromGroupKFold(
+            n_splits=args.scv_splits, random_state=args.random_seed,
+            shuffle=True)
+    else:
+        cv_splitter = SurvivalStratifiedKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
             shuffle=True)
     if args.scv_type == 'grid':
@@ -850,8 +874,7 @@ def run_model_selection():
         if groups is not None:
             print('Groups:')
             pprint(groups)
-        if (sample_weights is not None and 'sample_weight'
-                in search_param_routing['estimator']):
+        if 'sample_weight' in search_param_routing['estimator']:
             print('Sample weights:')
             pprint(sample_weights)
     if args.load_only:
@@ -996,6 +1019,8 @@ def run_model_selection():
                                           param_routing=tf_pipe_param_routing,
                                           fit_params=tf_pipe_fit_params)
                     for feature_names in tf_name_sets)
+            if args.scv_verbose == 0:
+                print()
             test_metric_colors = sns.color_palette(
                 'hls', len(test_datasets) * len(args.scv_scoring))
             for test_idx, test_dataset in enumerate(test_datasets):
@@ -1049,11 +1074,20 @@ def run_model_selection():
                                               test_size=args.test_size,
                                               random_state=args.random_seed)
         elif args.test_repeats > 0:
-            test_splitter = RepeatedSurvivalStratifiedGroupKFold(
-                n_splits=args.test_splits, n_repeats=args.test_repeats,
-                random_state=args.random_seed)
-        else:
+            if 'sample_weight' in search_param_routing['estimator']:
+                test_splitter = RepeatedSurvivalStratifiedGroupKFold(
+                    n_splits=args.test_splits, n_repeats=args.test_repeats,
+                    random_state=args.random_seed)
+            else:
+                test_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
+                    n_splits=args.test_splits, n_repeats=args.test_repeats,
+                    random_state=args.random_seed)
+        elif 'sample_weight' in search_param_routing['estimator']:
             test_splitter = SurvivalStratifiedGroupKFold(
+                n_splits=args.test_splits, random_state=args.random_seed,
+                shuffle=True)
+        else:
+            test_splitter = SurvivalStratifiedSampleFromGroupKFold(
                 n_splits=args.test_splits, random_state=args.random_seed,
                 shuffle=True)
         if args.verbose > 0:
@@ -1102,6 +1136,8 @@ def run_model_selection():
                             param_routing=pipe.param_routing,
                             fit_params=pipe_fit_params)
                         for pipe_params in [best_params])[0]
+                if args.scv_verbose == 0:
+                    print()
             else:
                 best_index = search.best_index_
                 best_params = search.best_params_
