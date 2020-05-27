@@ -1578,7 +1578,7 @@ parser.add_argument('--random-seed', type=int, default=777,
 parser.add_argument('--jvm-heap-size', type=int, default=500,
                     help='rjava jvm heap size')
 parser.add_argument('--filter-warnings', type=str, nargs='+',
-                    choices=['convergence', 'joblib', 'fitfailed'],
+                    choices=['convergence', 'joblib', 'fitfailed', 'coxnet'],
                     help='filter warnings')
 parser.add_argument('--verbose', type=int, default=1,
                     help='program verbosity')
@@ -1620,10 +1620,15 @@ if args.filter_warnings:
             warnings.filterwarnings(
                 'ignore', category=UserWarning,
                 message='^Persisting input arguments took')
-        if 'fitfailed' in args.filter_warnings:
+        if any(w in args.filter_warnings for w in ('fitfailed', 'coxnet')):
             warnings.filterwarnings(
                 'ignore', category=FitFailedWarning,
                 message='^Estimator fit failed')
+        if 'coxnet' in args.filter_warnings:
+            warnings.filterwarnings(
+                'ignore', category=UserWarning,
+                message='^All coefficients are zero',
+                module='sksurv_extensions.linear_model._coxnet')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
@@ -1635,9 +1640,13 @@ if args.filter_warnings:
         if 'joblib' in args.filter_warnings:
             python_warnings.append(':'.join(
                 ['ignore', 'Persisting input arguments took', 'UserWarning']))
-        if 'fitfailed' in args.filter_warnings:
+        if any(w in args.filter_warnings for w in ('fitfailed', 'coxnet')):
             python_warnings.append(':'.join(
                 ['ignore', 'Estimator fit failed', 'RuntimeWarning']))
+        if 'coxnet' in args.filter_warnings:
+            python_warnings.append(':'.join(
+                ['ignore', 'All coefficients are zero', 'UserWarning',
+                 'sksurv_extensions.linear_model._coxnet']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
