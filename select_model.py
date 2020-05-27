@@ -566,7 +566,8 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
             cnet_pipe.set_params(**params)
             cnet_pipes.append(clone(cnet_pipe))
     print('Calculating CoxnetSurvivalAnalysis alphas for {} pipelines'
-          .format(len(cnet_pipes)), end='\n' if args.scv_verbose > 0 else ' ')
+          .format(len(cnet_pipes)), flush=True,
+          end='\n' if args.scv_verbose > 0 else ' ')
     fitted_cnet_pipes = Parallel(
         n_jobs=args.n_jobs, backend=args.parallel_backend,
         verbose=args.scv_verbose)(
@@ -576,13 +577,13 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
                 fit_params=pipe_fit_params)
             for cnet_pipe in cnet_pipes)
     if args.scv_verbose == 0:
-        print()
+        print(flush=True)
     cnet_pipe_alpha_maxs, cnet_pipe_alpha_mins = [], []
     for fitted_cnet_pipe in fitted_cnet_pipes:
         cnet_pipe_alpha_maxs.append([fitted_cnet_pipe[-1].alphas_[0]])
         cnet_pipe_alpha_mins.append([fitted_cnet_pipe[-1].alphas_[-1]])
     print('Calculating CoxnetSurvivalAnalysis alphas for {} CV x {} pipelines'
-          .format(search.cv.get_n_splits(), len(cnet_pipes)),
+          .format(search.cv.get_n_splits(), len(cnet_pipes)), flush=True,
           end='\n' if args.scv_verbose > 0 else ' ')
     train_idx_data = []
     for train_idxs, _ in search.cv.split(X, y, groups):
@@ -610,7 +611,7 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
             for X_train, y_train, train_fit_params in train_idx_data
             for cnet_pipe in cnet_pipes)
     if args.scv_verbose == 0:
-        print()
+        print(flush=True)
     for train_group_idx in range(0, len(fitted_cnet_pipes), len(cnet_pipes)):
         for cnet_pipes_idx, _ in enumerate(cnet_pipes):
             cnet_pipe_alpha_maxs[cnet_pipes_idx].append(
@@ -1021,7 +1022,7 @@ def run_model_selection():
                                           fit_params=tf_pipe_fit_params)
                     for feature_names in tf_name_sets)
             if args.scv_verbose == 0:
-                print()
+                print(flush=True)
             test_metric_colors = sns.color_palette(
                 'hls', len(test_datasets) * len(args.scv_scoring))
             for test_idx, test_dataset in enumerate(test_datasets):
@@ -1138,7 +1139,7 @@ def run_model_selection():
                             fit_params=pipe_fit_params)
                         for pipe_params in [best_params])[0]
                 if args.scv_verbose == 0:
-                    print()
+                    print(flush=True)
             else:
                 best_index = search.best_index_
                 best_params = search.best_params_
