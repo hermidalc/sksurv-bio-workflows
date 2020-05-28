@@ -10,6 +10,7 @@ from itertools import product
 from pprint import pprint
 from shutil import rmtree
 from tempfile import mkdtemp, gettempdir
+from traceback import format_exception_only
 
 warnings.filterwarnings('ignore', category=FutureWarning,
                         module='sklearn.utils.deprecation')
@@ -73,6 +74,10 @@ from sksurv_extensions.linear_model import (
     ExtendedCoxnetSurvivalAnalysis, ExtendedCoxPHSurvivalAnalysis,
     FastCoxPHSurvivalAnalysis)
 from sksurv_extensions.svm import CachedFastSurvivalSVM
+
+
+def warning_format(message, category, filename, lineno, file=None, line=None):
+    return ' {}: {}'.format(category.__name__, message)
 
 
 def setup_pipe_and_param_grid(cmd_pipe_steps):
@@ -1123,16 +1128,34 @@ def run_model_selection():
                     clone(base_search), X.iloc[train_idxs], y[train_idxs],
                     groups[train_idxs] if groups is not None else None,
                     pipe_fit_params)
-            with parallel_backend(args.parallel_backend,
-                                  inner_max_num_threads=inner_max_num_threads):
-                search.fit(X.iloc[train_idxs], y[train_idxs],
-                           **search_fit_params)
+            try:
+                with parallel_backend(
+                        args.parallel_backend,
+                        inner_max_num_threads=inner_max_num_threads):
+                    search.fit(X.iloc[train_idxs], y[train_idxs],
+                               **search_fit_params)
+            except Exception as e:
+                if args.scv_error_score == 'raise':
+                    raise
+                if args.verbose > 0:
+                    print('Dataset:', dataset_name, ' Split: {:>{width}d}'
+                          .format(split_idx + 1,
+                                  width=len(str(args.test_splits))), end=' ',
+                          flush=True)
+                warnings.formatwarning = warning_format
+                warnings.warn('Estimator refit failed. This outer CV '
+                              'train-test split will be ignored. Details: {}'
+                              .format(format_exception_only(type(e), e)[0]),
+                              category=FitFailedWarning)
+                if args.pipe_memory:
+                    memory.clear(warn=False)
+                continue
             if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
                 param_grid_dict = update_coxnet_param_grid_dict(
                     search, param_grid_dict)
             if pipe_props['uses_rjava']:
-                best_index = np.argmin(
-                    search.cv_results_['rank_test_{}'.format(args.scv_refit)])
+                best_index = np.argmin(search.cv_results_[
+                    'rank_test_{}'.format(args.scv_refit)])
                 best_params = search.cv_results_['params'][best_index]
                 best_pipe = Parallel(
                     n_jobs=args.n_jobs, backend=args.parallel_backend,
@@ -1155,9 +1178,8 @@ def run_model_selection():
                                                         feature_meta)
             split_scores = {'cv': {}}
             for metric in args.scv_scoring:
-                split_scores['cv'][metric] = (search.cv_results_
-                                              ['mean_test_{}'.format(metric)]
-                                              [best_index])
+                split_scores['cv'][metric] = search.cv_results_[
+                    'mean_test_{}'.format(metric)][best_index]
             test_sample_weights = (sample_weights[test_idxs]
                                    if sample_weights is not None else None)
             pipe_predict_params = {}
@@ -1171,8 +1193,8 @@ def run_model_selection():
                 pipe_predict_params, test_sample_weights=test_sample_weights)
             if args.verbose > 0:
                 print('Dataset:', dataset_name, ' Split: {:>{width}d}'
-                      .format(split_idx + 1,
-                              width=len(str(args.test_splits))), end=' ')
+                      .format(split_idx + 1, width=len(str(args.test_splits))),
+                      end=' ')
                 for metric in args.scv_scoring:
                     print(' {} (CV / Test): {:.4f} / {:.4f}'.format(
                         metric_label[metric], split_scores['cv'][metric],
@@ -1195,7 +1217,6 @@ def run_model_selection():
                 split_models.append(best_pipe)
             split_results.append({'feature_meta': final_feature_meta,
                                   'scores': split_scores})
-            # clear cache (can grow too big if not)
             if args.pipe_memory:
                 memory.clear(warn=False)
         if args.save_model:
