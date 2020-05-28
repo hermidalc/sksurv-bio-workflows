@@ -622,7 +622,7 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
                 .alphas_[-1])
     cnet_pipe_alpha_maxs = np.min(cnet_pipe_alpha_maxs, axis=1)
     cnet_pipe_alpha_mins = np.max(cnet_pipe_alpha_mins, axis=1)
-    if args.cnet_srv_clip_alpha_range:
+    if args.cnet_srv_clip_alpha_range or args.cnet_srv_clip_top_alpha_range:
         alpha_max_exps = np.floor(np.log10(cnet_pipe_alpha_maxs))
         cnet_pipe_alpha_maxs[alpha_max_exps >= 1] = np.floor(
             cnet_pipe_alpha_maxs[alpha_max_exps >= 1])
@@ -632,8 +632,9 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
             / 10)
         cnet_pipe_alpha_maxs[alpha_max_exps < 0] = (
             np.floor(cnet_pipe_alpha_maxs[alpha_max_exps < 0]
-                     * 10 ** -alpha_max_exps[alpha_max_exps < 0])
-            * 10 ** alpha_max_exps[alpha_max_exps < 0])
+                     * 10 ** -(alpha_max_exps[alpha_max_exps < 0] - 1))
+            * 10 ** (alpha_max_exps[alpha_max_exps < 0] - 1))
+    if args.cnet_srv_clip_alpha_range or args.cnet_srv_clip_bot_alpha_range:
         alpha_min_exps = np.floor(np.log10(cnet_pipe_alpha_mins))
         cnet_pipe_alpha_mins[alpha_min_exps >= 1] = np.ceil(
             cnet_pipe_alpha_mins[alpha_min_exps >= 1])
@@ -1480,6 +1481,12 @@ parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
 parser.add_argument('--cnet-srv-clip-alpha-range', default=False,
                     action='store_true',
                     help='CoxnetSurvivalAnalysis clip alpha range')
+parser.add_argument('--cnet-srv-clip-top-alpha-range', default=False,
+                    action='store_true',
+                    help='CoxnetSurvivalAnalysis clip top alpha range')
+parser.add_argument('--cnet-srv-clip-bot-alpha-range', default=False,
+                    action='store_true',
+                    help='CoxnetSurvivalAnalysis clip bottom alpha range')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
