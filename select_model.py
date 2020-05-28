@@ -580,6 +580,8 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
         print(flush=True)
     cnet_pipe_alpha_maxs, cnet_pipe_alpha_mins = [], []
     for fitted_cnet_pipe in fitted_cnet_pipes:
+        if np.any(fitted_cnet_pipe[-1].alphas_) == 0:
+            continue
         cnet_pipe_alpha_maxs.append([fitted_cnet_pipe[-1].alphas_[0]])
         cnet_pipe_alpha_mins.append([fitted_cnet_pipe[-1].alphas_[-1]])
     print('Calculating CoxnetSurvivalAnalysis alphas for {} CV x {} pipelines'
@@ -614,12 +616,14 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
         print(flush=True)
     for train_group_idx in range(0, len(fitted_cnet_pipes), len(cnet_pipes)):
         for cnet_pipes_idx, _ in enumerate(cnet_pipes):
+            fitted_cnet_pipe = fitted_cnet_pipes[train_group_idx
+                                                 + cnet_pipes_idx]
+            if np.any(fitted_cnet_pipe[-1].alphas_) == 0:
+                continue
             cnet_pipe_alpha_maxs[cnet_pipes_idx].append(
-                fitted_cnet_pipes[train_group_idx + cnet_pipes_idx][-1]
-                .alphas_[0])
+                fitted_cnet_pipe[-1].alphas_[0])
             cnet_pipe_alpha_mins[cnet_pipes_idx].append(
-                fitted_cnet_pipes[train_group_idx + cnet_pipes_idx][-1]
-                .alphas_[-1])
+                fitted_cnet_pipe[-1].alphas_[-1])
     cnet_pipe_alpha_maxs = np.min(cnet_pipe_alpha_maxs, axis=1)
     cnet_pipe_alpha_mins = np.max(cnet_pipe_alpha_mins, axis=1)
     if args.cnet_srv_clip_alpha_range or args.cnet_srv_clip_top_alpha_range:
