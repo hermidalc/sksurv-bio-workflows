@@ -1659,7 +1659,7 @@ if args.filter_warnings:
         if 'coxnet' in args.filter_warnings:
             warnings.filterwarnings(
                 'ignore', category=UserWarning,
-                message='^All coefficients are zero',
+                message='^all coefficients are zero',
                 module='sksurv_extensions.linear_model._coxnet')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
@@ -1677,7 +1677,7 @@ if args.filter_warnings:
                 ['ignore', 'Estimator fit failed', 'RuntimeWarning']))
         if 'coxnet' in args.filter_warnings:
             python_warnings.append(':'.join(
-                ['ignore', 'All coefficients are zero', 'UserWarning',
+                ['ignore', 'all coefficients are zero', 'UserWarning',
                  'sksurv_extensions.linear_model._coxnet']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
