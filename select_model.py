@@ -34,11 +34,10 @@ from joblib import Memory, Parallel, delayed, dump, parallel_backend
 from natsort import natsorted
 from rpy2.robjects import numpy2ri, pandas2ri
 from rpy2.robjects.packages import importr
-from sklearn.base import BaseEstimator, clone, is_classifier, is_regressor
+from sklearn.base import BaseEstimator, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
-from sklearn.model_selection import (GroupShuffleSplit, KFold, ParameterGrid,
-                                     ParameterSampler, ShuffleSplit)
+from sklearn.model_selection import ParameterGrid, ParameterSampler
 from sklearn.preprocessing import (
     MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
     StandardScaler)
@@ -69,7 +68,9 @@ from sksurv_extensions.model_selection import (
     SurvivalStratifiedKFold, SurvivalStratifiedGroupKFold,
     SurvivalStratifiedSampleFromGroupKFold, RepeatedSurvivalStratifiedKFold,
     RepeatedSurvivalStratifiedGroupKFold,
-    RepeatedSurvivalStratifiedSampleFromGroupKFold)
+    RepeatedSurvivalStratifiedSampleFromGroupKFold,
+    SurvivalStratifiedShuffleSplit, SurvivalStratifiedGroupShuffleSplit,
+    SurvivalStratifiedSampleFromGroupShuffleSplit)
 from sksurv_extensions.linear_model import (
     ExtendedCoxnetSurvivalAnalysis, ExtendedCoxPHSurvivalAnalysis,
     FastCoxPHSurvivalAnalysis)
@@ -809,9 +810,9 @@ def run_model_selection():
     scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
     if groups is None:
         if args.scv_use_ssplit:
-            cv_splitter = ShuffleSplit(n_splits=args.scv_splits,
-                                       test_size=args.scv_size,
-                                       random_state=args.random_seed)
+            cv_splitter = SurvivalStratifiedShuffleSplit(
+                n_splits=args.scv_splits, test_size=args.scv_size,
+                random_state=args.random_seed)
         elif args.scv_repeats > 0:
             cv_splitter = RepeatedSurvivalStratifiedKFold(
                 n_splits=args.scv_splits, n_repeats=args.scv_repeats,
@@ -821,9 +822,18 @@ def run_model_selection():
                 n_splits=args.scv_splits, random_state=args.random_seed,
                 shuffle=True)
     elif args.scv_use_ssplit:
-        cv_splitter = GroupShuffleSplit(n_splits=args.scv_splits,
-                                        test_size=args.scv_size,
-                                        random_state=args.random_seed)
+        if 'sample_weight' in search_param_routing['estimator']:
+            cv_splitter = SurvivalStratifiedGroupShuffleSplit(
+                n_splits=args.scv_splits, test_size=args.scv_size,
+                random_state=args.random_seed)
+        elif args.test_dataset:
+            cv_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
+                n_splits=args.scv_splits, test_size=args.scv_size,
+                random_state=args.random_seed)
+        else:
+            cv_splitter = SurvivalStratifiedShuffleSplit(
+                n_splits=args.scv_splits, test_size=args.scv_size,
+                random_state=args.random_seed)
     elif args.scv_repeats > 0:
         if 'sample_weight' in search_param_routing['estimator']:
             cv_splitter = RepeatedSurvivalStratifiedGroupKFold(
@@ -1070,9 +1080,9 @@ def run_model_selection():
         param_cv_scores = {}
         if groups is None:
             if args.test_use_ssplit:
-                test_splitter = ShuffleSplit(n_splits=args.test_splits,
-                                             test_size=args.test_size,
-                                             random_state=args.random_seed)
+                test_splitter = SurvivalStratifiedShuffleSplit(
+                    n_splits=args.test_splits, test_size=args.test_size,
+                    random_state=args.random_seed)
             elif args.test_repeats > 0:
                 test_splitter = RepeatedSurvivalStratifiedKFold(
                     n_splits=args.test_splits, n_repeats=args.test_repeats,
@@ -1082,9 +1092,14 @@ def run_model_selection():
                     n_splits=args.test_splits, random_state=args.random_seed,
                     shuffle=True)
         elif args.test_use_ssplit:
-            test_splitter = GroupShuffleSplit(n_splits=args.test_splits,
-                                              test_size=args.test_size,
-                                              random_state=args.random_seed)
+            if 'sample_weight' in search_param_routing['estimator']:
+                test_splitter = SurvivalStratifiedGroupShuffleSplit(
+                    n_splits=args.test_splits, test_size=args.test_size,
+                    random_state=args.random_seed)
+            else:
+                test_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
+                    n_splits=args.test_splits, test_size=args.test_size,
+                    random_state=args.random_seed)
         elif args.test_repeats > 0:
             if 'sample_weight' in search_param_routing['estimator']:
                 test_splitter = RepeatedSurvivalStratifiedGroupKFold(
