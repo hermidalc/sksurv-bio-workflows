@@ -72,8 +72,9 @@ from sksurv_extensions.model_selection import (
     SurvivalStratifiedShuffleSplit, SurvivalStratifiedGroupShuffleSplit,
     SurvivalStratifiedSampleFromGroupShuffleSplit)
 from sksurv_extensions.linear_model import (
-    ExtendedCoxnetSurvivalAnalysis, ExtendedCoxPHSurvivalAnalysis,
-    FastCoxPHSurvivalAnalysis)
+    CachedExtendedCoxnetSurvivalAnalysis, ExtendedCoxnetSurvivalAnalysis,
+    ExtendedCoxPHSurvivalAnalysis, FastCoxPHSurvivalAnalysis,
+    MetaCoxnetSurvivalAnalysis)
 from sksurv_extensions.svm import CachedFastSurvivalSVM
 
 
@@ -555,7 +556,7 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
         plt.grid(True, alpha=0.3)
 
 
-def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
+def add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params):
     cnet_pipes = []
     if args.scv_type == 'grid':
         param_combos = ParameterGrid(search.param_grid)
@@ -566,113 +567,35 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
     pipe = search.estimator
     srv_step_name = pipe.steps[-1][0]
     for params in param_combos:
-        if (isinstance(pipe[-1], CoxnetSurvivalAnalysis) or isinstance(
-                params[srv_step_name], CoxnetSurvivalAnalysis)):
+        if (isinstance(pipe[-1], MetaCoxnetSurvivalAnalysis)
+                or (srv_step_name in params and isinstance(
+                    params[srv_step_name], MetaCoxnetSurvivalAnalysis))):
             cnet_pipe = clone(pipe)
             cnet_pipe.set_params(**params)
-            cnet_pipes.append(clone(cnet_pipe))
-    print('Calculating CoxnetSurvivalAnalysis alphas for {} pipelines'
+            cnet_pipe.steps[-1] = (srv_step_name, cnet_pipe[-1].estimator)
+            cnet_pipes.append(cnet_pipe)
+    print('Generating CoxnetSurvivalAnalysis alpha path for {} pipelines'
           .format(len(cnet_pipes)), flush=True,
           end='\n' if args.scv_verbose > 0 else ' ')
     fitted_cnet_pipes = Parallel(
         n_jobs=args.n_jobs, backend=args.parallel_backend,
         verbose=args.scv_verbose)(
-            delayed(fit_pipeline)(
-                X, y, cnet_pipe.steps, params=None,
-                param_routing=cnet_pipe.param_routing,
-                fit_params=pipe_fit_params)
+            delayed(fit_pipeline)(X, y, cnet_pipe.steps, params=None,
+                                  param_routing=cnet_pipe.param_routing,
+                                  fit_params=pipe_fit_params)
             for cnet_pipe in cnet_pipes)
     if args.scv_verbose == 0:
         print(flush=True)
-    cnet_pipe_alpha_maxs, cnet_pipe_alpha_mins = [], []
-    for fitted_cnet_pipe in fitted_cnet_pipes:
-        if np.any(fitted_cnet_pipe[-1].alphas_) == 0:
-            continue
-        cnet_pipe_alpha_maxs.append([fitted_cnet_pipe[-1].alphas_[0]])
-        cnet_pipe_alpha_mins.append([fitted_cnet_pipe[-1].alphas_[-1]])
-    print('Calculating CoxnetSurvivalAnalysis alphas for {} CV x {} pipelines'
-          .format(search.cv.get_n_splits(), len(cnet_pipes)), flush=True,
-          end='\n' if args.scv_verbose > 0 else ' ')
-    train_idx_data = []
-    for train_idxs, _ in search.cv.split(X, y, groups):
-        train_pipe_fit_params = {}
-        if pipe_fit_params:
-            if 'sample_meta' in pipe_fit_params:
-                train_pipe_fit_params['sample_meta'] = (
-                    pipe_fit_params['sample_meta'].iloc[train_idxs])
-            if 'feature_meta' in pipe_fit_params:
-                train_pipe_fit_params['feature_meta'] = (
-                    pipe_fit_params['feature_meta'])
-            if 'sample_weight' in pipe_fit_params:
-                train_pipe_fit_params['sample_weight'] = (
-                    pipe_fit_params['sample_weight'][train_idxs]
-                    if pipe_fit_params['sample_weight'] is not None else None)
-        train_idx_data.append((X.iloc[train_idxs], y[train_idxs],
-                               train_pipe_fit_params))
-    fitted_cnet_pipes = Parallel(
-        n_jobs=args.n_jobs, backend=args.parallel_backend,
-        verbose=args.scv_verbose)(
-            delayed(fit_pipeline)(
-                X_train, y_train, cnet_pipe.steps, params=None,
-                param_routing=cnet_pipe.param_routing,
-                fit_params=train_fit_params)
-            for X_train, y_train, train_fit_params in train_idx_data
-            for cnet_pipe in cnet_pipes)
-    if args.scv_verbose == 0:
-        print(flush=True)
-    for train_group_idx in range(0, len(fitted_cnet_pipes), len(cnet_pipes)):
-        for cnet_pipes_idx, _ in enumerate(cnet_pipes):
-            fitted_cnet_pipe = fitted_cnet_pipes[train_group_idx
-                                                 + cnet_pipes_idx]
-            if np.any(fitted_cnet_pipe[-1].alphas_) == 0:
-                continue
-            cnet_pipe_alpha_maxs[cnet_pipes_idx].append(
-                fitted_cnet_pipe[-1].alphas_[0])
-            cnet_pipe_alpha_mins[cnet_pipes_idx].append(
-                fitted_cnet_pipe[-1].alphas_[-1])
-    cnet_pipe_alpha_maxs = np.min(cnet_pipe_alpha_maxs, axis=1)
-    cnet_pipe_alpha_mins = np.max(cnet_pipe_alpha_mins, axis=1)
-    if args.cnet_srv_clip_alpha_range or args.cnet_srv_clip_top_alpha_range:
-        alpha_max_exps = np.floor(np.log10(cnet_pipe_alpha_maxs))
-        cnet_pipe_alpha_maxs[alpha_max_exps >= 1] = np.floor(
-            cnet_pipe_alpha_maxs[alpha_max_exps >= 1])
-        cnet_pipe_alpha_maxs[(alpha_max_exps < 1) & (alpha_max_exps >= 0)] = (
-            np.floor(cnet_pipe_alpha_maxs[
-                (alpha_max_exps < 1) & (alpha_max_exps >= 0)] * 10)
-            / 10)
-        cnet_pipe_alpha_maxs[alpha_max_exps < 0] = (
-            np.floor(cnet_pipe_alpha_maxs[alpha_max_exps < 0]
-                     * 10 ** -(alpha_max_exps[alpha_max_exps < 0] - 1))
-            * 10 ** (alpha_max_exps[alpha_max_exps < 0] - 1))
-    if args.cnet_srv_clip_alpha_range or args.cnet_srv_clip_bot_alpha_range:
-        alpha_min_exps = np.floor(np.log10(cnet_pipe_alpha_mins))
-        cnet_pipe_alpha_mins[alpha_min_exps >= 1] = np.ceil(
-            cnet_pipe_alpha_mins[alpha_min_exps >= 1])
-        cnet_pipe_alpha_mins[(alpha_min_exps < 1) & (alpha_min_exps >= 0)] = (
-            np.ceil(cnet_pipe_alpha_mins[
-                (alpha_min_exps < 1) & (alpha_min_exps >= 0)] * 10)
-            / 10)
-        cnet_pipe_alpha_mins[alpha_min_exps < 0] = (
-            np.ceil(cnet_pipe_alpha_mins[alpha_min_exps < 0]
-                    * 10 ** -alpha_min_exps[alpha_min_exps < 0])
-            * 10 ** alpha_min_exps[alpha_min_exps < 0])
     param_grid = []
     cnet_pipes_idx = 0
-    cnet_srv_a_param = '{}__alphas'.format(srv_step_name)
-    cnet_srv_n_param = '{}__n_alphas'.format(srv_step_name)
+    cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
     for params in param_combos:
         param_grid.append({k: [v] for k, v in params.items()})
-        if (isinstance(pipe[-1], CoxnetSurvivalAnalysis) or isinstance(
-                params[srv_step_name], CoxnetSurvivalAnalysis)):
-            param_grid[-1][cnet_srv_a_param] = np.array(
-                [[a] for a in np.logspace(
-                    np.log10(cnet_pipe_alpha_maxs[cnet_pipes_idx]),
-                    np.log10(cnet_pipe_alpha_mins[cnet_pipes_idx]),
-                    num=(params[cnet_srv_n_param]
-                         if cnet_srv_n_param in params else
-                         params[srv_step_name].n_alphas
-                         if srv_step_name in params else
-                         pipe[-1].n_alphas))])
+        if (isinstance(pipe[-1], MetaCoxnetSurvivalAnalysis)
+                or (srv_step_name in params and isinstance(
+                    params[srv_step_name], MetaCoxnetSurvivalAnalysis))):
+            param_grid[-1][cnet_srv_a_param] = (
+                fitted_cnet_pipes[cnet_pipes_idx][-1].alphas_)
             cnet_pipes_idx += 1
     if args.scv_type == 'grid':
         search.set_params(param_grid=param_grid)
@@ -687,9 +610,9 @@ def add_coxnet_alpha_param_grid(search, X, y, groups, pipe_fit_params):
 def update_coxnet_param_grid_dict(search, param_grid_dict):
     pipe = search.estimator
     srv_step_name = pipe.steps[-1][0]
-    cnet_srv_a_param = '{}__alphas'.format(srv_step_name)
-    cnet_srv_l_param = '{}__l1_ratio'.format(srv_step_name)
-    cnet_srv_n_param = '{}__n_alphas'.format(srv_step_name)
+    cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
+    cnet_srv_l_param = '{}__estimator__l1_ratio'.format(srv_step_name)
+    cnet_srv_n_param = '{}__estimator__n_alphas'.format(srv_step_name)
     if any(p in search.best_params_ for p in (cnet_srv_l_param,
                                               cnet_srv_n_param)):
         best_alpha_condition = {k: v for k, v in search.best_params_.items()
@@ -916,8 +839,7 @@ def run_model_selection():
         if groups is not None:
             search_fit_params['groups'] = groups
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
-            search = add_coxnet_alpha_param_grid(search, X, y, groups,
-                                                 pipe_fit_params)
+            search = add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params)
         with parallel_backend(args.parallel_backend,
                               inner_max_num_threads=inner_max_num_threads):
             search.fit(X, y, **search_fit_params)
@@ -1078,6 +1000,7 @@ def run_model_selection():
         split_models = []
         split_results = []
         param_cv_scores = {}
+        param_grid_dict_alphas = None
         if groups is None:
             if args.test_use_ssplit:
                 test_splitter = SurvivalStratifiedShuffleSplit(
@@ -1122,6 +1045,8 @@ def run_model_selection():
             pprint(test_splitter)
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             base_search = clone(search)
+            srv_step_name = pipe.steps[-1][0]
+            cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
         for split_idx, (train_idxs, test_idxs) in enumerate(
                 test_splitter.split(X, y, groups)):
             pipe_fit_params = {}
@@ -1141,7 +1066,6 @@ def run_model_selection():
             if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
                 search = add_coxnet_alpha_param_grid(
                     clone(base_search), X.iloc[train_idxs], y[train_idxs],
-                    groups[train_idxs] if groups is not None else None,
                     pipe_fit_params)
             try:
                 with parallel_backend(
@@ -1168,6 +1092,11 @@ def run_model_selection():
             if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
                 param_grid_dict = update_coxnet_param_grid_dict(
                     search, param_grid_dict)
+                param_grid_dict_alphas = (
+                    np.vstack((param_grid_dict_alphas,
+                               param_grid_dict[cnet_srv_a_param]))
+                    if param_grid_dict_alphas is not None else
+                    param_grid_dict[cnet_srv_a_param])
             if pipe_props['uses_rjava']:
                 best_index = np.argmin(search.cv_results_[
                     'rank_test_{}'.format(args.scv_refit)])
@@ -1242,6 +1171,9 @@ def run_model_selection():
                  .format(args.out_dir, dataset_name))
             dump(param_cv_scores, '{}/{}_param_cv_scores.pkl'
                  .format(args.out_dir, dataset_name))
+        if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
+            param_grid_dict[cnet_srv_a_param] = np.mean(
+                param_grid_dict_alphas, axis=0)
         scores = {'cv': {}, 'te': {}}
         num_features = []
         for split_result in split_results:
@@ -1518,15 +1450,6 @@ parser.add_argument('--cnet-srv-alpha-min-ratio', type=float, default=0.1,
                     help='CoxnetSurvivalAnalysis alpha_min_ratio')
 parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
                     help='CoxnetSurvivalAnalysis max_iter')
-parser.add_argument('--cnet-srv-clip-alpha-range', default=False,
-                    action='store_true',
-                    help='CoxnetSurvivalAnalysis clip alpha range')
-parser.add_argument('--cnet-srv-clip-top-alpha-range', default=False,
-                    action='store_true',
-                    help='CoxnetSurvivalAnalysis clip top alpha range')
-parser.add_argument('--cnet-srv-clip-bot-alpha-range', default=False,
-                    action='store_true',
-                    help='CoxnetSurvivalAnalysis clip bottom alpha range')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
@@ -1714,10 +1637,18 @@ if args.pipe_memory:
     fsvm_srv = CachedFastSurvivalSVM(memory=memory,
                                      max_iter=args.fsvm_srv_max_iter,
                                      random_state=args.random_seed)
+    cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
+        memory=memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
+        fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
+        normalize=False)
 else:
     memory = None
     fsvm_srv = FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
                                random_state=args.random_seed)
+    cnet_srv = ExtendedCoxnetSurvivalAnalysis(
+        alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
+        fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
+        normalize=False)
 
 pipeline_step_types = ('slr', 'trf', 'srv')
 cv_params = {k: v for k, v in vars(args).items()
@@ -1911,13 +1842,10 @@ pipe_config = {
             'alpha': cv_params['cph_srv_a']},
         'param_routing': ['feature_meta']},
     'CoxnetSurvivalAnalysis': {
-        'estimator': ExtendedCoxnetSurvivalAnalysis(
-            alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
-            fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
-            normalize=False),
+        'estimator': MetaCoxnetSurvivalAnalysis(cnet_srv),
         'param_grid': {
-            'l1_ratio': cv_params['cnet_srv_l1r'],
-            'n_alphas': cv_params['cnet_srv_na']},
+            'estimator__l1_ratio': cv_params['cnet_srv_l1r'],
+            'estimator__n_alphas': cv_params['cnet_srv_na']},
         'param_routing': ['feature_meta']},
     'FastSurvivalSVM': {
         'estimator': FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
@@ -1931,10 +1859,12 @@ params_lin_xticks = [
     'srv__k',
     'srv__n_features_to_select',
     'srv__step',
-    'srv__estimator__rank_ratio',
     'srv__l1_ratio',
     'srv__n_alphas',
-    'srv__rank_ratio']
+    'srv__rank_ratio',
+    'srv__estimator__l1_ratio',
+    'srv__estimator__n_alphas',
+    'srv__estimator__rank_ratio']
 params_log_xticks = [
     'srv__alpha',
     'srv__alphas',
