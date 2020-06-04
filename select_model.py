@@ -327,7 +327,7 @@ def calculate_test_scores(pipe, X_test, y_test, pipe_predict_params,
         elif metric == 'cumulative_dynamic_auc':
             scores[metric] = cumulative_dynamic_auc(y_train, y_test, y_pred,
                                                     test_times)[1]
-    return scores
+    return scores, y_pred
 
 
 def transform_feature_meta(pipe, feature_meta):
@@ -882,7 +882,7 @@ def run_model_selection():
                 pipe_predict_params['sample_meta'] = test_sample_meta
             if 'feature_meta' in pipe_fit_params:
                 pipe_predict_params['feature_meta'] = test_feature_meta
-            test_scores = calculate_test_scores(
+            test_scores, _ = calculate_test_scores(
                 search, X_test, y_test, pipe_predict_params,
                 test_sample_weights=test_sample_weights)
             if args.verbose > 0:
@@ -978,7 +978,7 @@ def run_model_selection():
                     pipe_predict_params['feature_meta'] = test_feature_meta
                 tf_test_scores = {}
                 for tf_pipe in tf_pipes:
-                    test_scores = calculate_test_scores(
+                    test_scores, _ = calculate_test_scores(
                         tf_pipe, X_test, y_test, pipe_predict_params,
                         test_sample_weights=test_sample_weights)
                     for metric in args.scv_scoring:
@@ -1001,6 +1001,7 @@ def run_model_selection():
         split_results = []
         param_cv_scores = {}
         param_grid_dict_alphas = None
+        risk_scores = None
         if groups is None:
             if args.test_use_ssplit:
                 test_splitter = SurvivalStratifiedShuffleSplit(
@@ -1132,7 +1133,7 @@ def run_model_selection():
                         sample_meta.iloc[test_idxs])
                 if 'feature_meta' in pipe_fit_params:
                     pipe_predict_params['feature_meta'] = feature_meta
-                split_scores['te'] = calculate_test_scores(
+                split_scores['te'], split_risk_scores = calculate_test_scores(
                     best_pipe, X.iloc[test_idxs], y[test_idxs],
                     pipe_predict_params,
                     test_sample_weights=test_sample_weights)
@@ -1161,8 +1162,24 @@ def run_model_selection():
                         print(tabulate(final_feature_meta, headers='keys'))
                 split_result = {'feature_meta': final_feature_meta,
                                 'scores': split_scores}
+                split_risk_score_col = 'Risk Score {:d}'.format(split_idx + 1)
+                split_risk_scores = pd.DataFrame(
+                    {split_risk_score_col: split_risk_scores},
+                    index=sample_meta.index[test_idxs])
+                risk_scores = (risk_scores.join(split_risk_scores, how='outer')
+                               if risk_scores is not None else
+                               split_risk_scores)
             split_results.append(split_result)
             if args.save_models:
+                if args.pipe_memory:
+                    best_pipe.set_params(memory=None)
+                    for estimator in best_pipe:
+                        if hasattr(estimator, 'memory'):
+                            estimator.set_params(memory=None)
+                        if hasattr(estimator, 'estimator'):
+                            estimator.estimator.set_params(memory=None)
+                        elif hasattr(estimator, 'base_estimator'):
+                            estimator.base_estimator.set_params(memory=None)
                 split_models.append(best_pipe)
             if args.pipe_memory:
                 memory.clear(warn=False)
@@ -1173,6 +1190,8 @@ def run_model_selection():
             dump(split_results, '{}/{}_split_results.pkl'
                  .format(args.out_dir, dataset_name))
             dump(param_cv_scores, '{}/{}_param_cv_scores.pkl'
+                 .format(args.out_dir, dataset_name))
+            dump(risk_scores, '{}/{}_risk_scores.pkl'
                  .format(args.out_dir, dataset_name))
         if param_grid_dict_alphas is not None:
             param_grid_dict[cnet_srv_a_param] = np.mean(
