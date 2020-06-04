@@ -1193,6 +1193,8 @@ def run_model_selection():
                  .format(args.out_dir, dataset_name))
             dump(risk_scores, '{}/{}_risk_scores.pkl'
                  .format(args.out_dir, dataset_name))
+            r_base.saveRDS(risk_scores, '{}/{}_risk_scores.rds'
+                           .format(args.out_dir, dataset_name))
         if param_grid_dict_alphas is not None:
             param_grid_dict[cnet_srv_a_param] = np.mean(
                 param_grid_dict_alphas, axis=0)
@@ -1324,6 +1326,8 @@ def run_model_selection():
         if args.save_results:
             dump(feature_results, '{}/{}_feature_results.pkl'
                  .format(args.out_dir, dataset_name))
+            r_base.saveRDS(feature_results, '{}/{}_feature_results.rds'
+                           .format(args.out_dir, dataset_name))
         if args.verbose > 0:
             print('Overall Feature Ranking:')
             if feature_weights is not None:
