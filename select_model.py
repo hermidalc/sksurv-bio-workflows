@@ -318,15 +318,24 @@ def calculate_test_scores(pipe, X_test, y_test, pipe_predict_params,
     scores = {}
     y_pred = pipe.predict(X_test, **pipe_predict_params)
     for metric in args.scv_scoring:
-        if metric in ('concordance_index_censored', 'score'):
-            scores[metric] = concordance_index_censored(
-                y_test[y_test.dtype.names[0]], y_test[y_test.dtype.names[1]],
-                y_pred)[0]
-        elif metric == 'concordance_index_ipcw':
-            scores[metric] = concordance_index_ipcw(y_train, y_test, y_pred)[0]
-        elif metric == 'cumulative_dynamic_auc':
-            scores[metric] = cumulative_dynamic_auc(y_train, y_test, y_pred,
-                                                    test_times)[1]
+        try:
+            if metric in ('concordance_index_censored', 'score'):
+                scores[metric] = concordance_index_censored(
+                    y_test[y_test.dtype.names[0]],
+                    y_test[y_test.dtype.names[1]],
+                    y_pred)[0]
+            elif metric == 'concordance_index_ipcw':
+                scores[metric] = concordance_index_ipcw(
+                    y_train, y_test, y_pred)[0]
+            elif metric == 'cumulative_dynamic_auc':
+                scores[metric] = cumulative_dynamic_auc(
+                    y_train, y_test, y_pred, test_times)[1]
+        except Exception as e:
+            warnings.formatwarning = warning_format
+            warnings.warn('Calculating test scores failed. Score will be set '
+                          'to zero. Details: {}'
+                          .format(format_exception_only(type(e), e)[0]))
+            scores[metric] = 0
     return scores, y_pred
 
 
