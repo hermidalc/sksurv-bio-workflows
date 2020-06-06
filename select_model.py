@@ -319,24 +319,15 @@ def calculate_test_scores(pipe, X_test, y_test, pipe_predict_params,
     scores = {}
     y_pred = pipe.predict(X_test, **pipe_predict_params)
     for metric in args.scv_scoring:
-        try:
-            if metric in ('concordance_index_censored', 'score'):
-                scores[metric] = concordance_index_censored(
-                    y_test[y_test.dtype.names[0]],
-                    y_test[y_test.dtype.names[1]],
-                    y_pred)[0]
-            elif metric == 'concordance_index_ipcw':
-                scores[metric] = concordance_index_ipcw(
-                    y_train, y_test, y_pred)[0]
-            elif metric == 'cumulative_dynamic_auc':
-                scores[metric] = cumulative_dynamic_auc(
-                    y_train, y_test, y_pred, test_times)[1]
-        except Exception as e:
-            warnings.formatwarning = warning_format
-            warnings.warn('Calculating test scores failed. Score will be set '
-                          'to zero. Details: {}'
-                          .format(format_exception_only(type(e), e)[0]))
-            scores[metric] = 0
+        if metric in ('concordance_index_censored', 'score'):
+            scores[metric] = concordance_index_censored(
+                y_test[y_test.dtype.names[0]], y_test[y_test.dtype.names[1]],
+                y_pred)[0]
+        elif metric == 'concordance_index_ipcw':
+            scores[metric] = concordance_index_ipcw(y_train, y_test, y_pred)[0]
+        elif metric == 'cumulative_dynamic_auc':
+            scores[metric] = cumulative_dynamic_auc(y_train, y_test, y_pred,
+                                                    test_times)[1]
     return scores, y_pred
 
 
@@ -1157,6 +1148,22 @@ def run_model_selection():
                     best_index = search.best_index_
                     best_params = search.best_params_
                     best_pipe = search.best_estimator_
+                split_scores = {'cv': {}}
+                for metric in args.scv_scoring:
+                    split_scores['cv'][metric] = search.cv_results_[
+                        'mean_test_{}'.format(metric)][best_index]
+                test_sample_weights = (sample_weights[test_idxs]
+                                       if sample_weights is not None else None)
+                pipe_predict_params = {}
+                if 'sample_meta' in pipe_fit_params:
+                    pipe_predict_params['sample_meta'] = (
+                        sample_meta.iloc[test_idxs])
+                if 'feature_meta' in pipe_fit_params:
+                    pipe_predict_params['feature_meta'] = feature_meta
+                split_scores['te'], split_risk_scores = calculate_test_scores(
+                    best_pipe, X.iloc[test_idxs], y[test_idxs],
+                    pipe_predict_params,
+                    test_sample_weights=test_sample_weights)
             except Exception as e:
                 if args.scv_error_score == 'raise':
                     raise
@@ -1166,7 +1173,7 @@ def run_model_selection():
                                   width=len(str(args.test_splits))), end=' ',
                           flush=True)
                 warnings.formatwarning = warning_format
-                warnings.warn('Estimator refit failed. This outer CV '
+                warnings.warn('Estimator fit/scoring failed. This outer CV '
                               'train-test split will be ignored. Details: {}'
                               .format(format_exception_only(type(e), e)[0]),
                               category=FitFailedWarning)
@@ -1188,22 +1195,6 @@ def run_model_selection():
                                                       param_cv_scores)
                 final_feature_meta = transform_feature_meta(best_pipe,
                                                             feature_meta)
-                split_scores = {'cv': {}}
-                for metric in args.scv_scoring:
-                    split_scores['cv'][metric] = search.cv_results_[
-                        'mean_test_{}'.format(metric)][best_index]
-                test_sample_weights = (sample_weights[test_idxs]
-                                       if sample_weights is not None else None)
-                pipe_predict_params = {}
-                if 'sample_meta' in pipe_fit_params:
-                    pipe_predict_params['sample_meta'] = (
-                        sample_meta.iloc[test_idxs])
-                if 'feature_meta' in pipe_fit_params:
-                    pipe_predict_params['feature_meta'] = feature_meta
-                split_scores['te'], split_risk_scores = calculate_test_scores(
-                    best_pipe, X.iloc[test_idxs], y[test_idxs],
-                    pipe_predict_params,
-                    test_sample_weights=test_sample_weights)
                 if args.verbose > 0:
                     print('Dataset:', dataset_name, ' Split: {:>{width}d}'
                           .format(split_idx + 1,
