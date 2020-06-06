@@ -1138,6 +1138,25 @@ def run_model_selection():
                         inner_max_num_threads=inner_max_num_threads):
                     search.fit(X.iloc[train_idxs], y[train_idxs],
                                **search_fit_params)
+                if pipe_props['uses_rjava']:
+                    best_index = np.argmin(search.cv_results_[
+                        'rank_test_{}'.format(args.scv_refit)])
+                    best_params = search.cv_results_['params'][best_index]
+                    best_pipe = Parallel(
+                        n_jobs=args.n_jobs, backend=args.parallel_backend,
+                        verbose=args.scv_verbose)(
+                            delayed(fit_pipeline)(
+                                X.iloc[train_idxs], y[train_idxs], pipe.steps,
+                                params=pipe_params,
+                                param_routing=pipe.param_routing,
+                                fit_params=pipe_fit_params)
+                            for pipe_params in [best_params])[0]
+                    if args.scv_verbose == 0:
+                        print(flush=True)
+                else:
+                    best_index = search.best_index_
+                    best_params = search.best_params_
+                    best_pipe = search.best_estimator_
             except Exception as e:
                 if args.scv_error_score == 'raise':
                     raise
@@ -1165,25 +1184,6 @@ def run_model_selection():
                         np.vstack((param_grid_dict_alphas, full_alpha_path))
                         if param_grid_dict_alphas is not None else
                         full_alpha_path)
-                if pipe_props['uses_rjava']:
-                    best_index = np.argmin(search.cv_results_[
-                        'rank_test_{}'.format(args.scv_refit)])
-                    best_params = search.cv_results_['params'][best_index]
-                    best_pipe = Parallel(
-                        n_jobs=args.n_jobs, backend=args.parallel_backend,
-                        verbose=args.scv_verbose)(
-                            delayed(fit_pipeline)(
-                                X.iloc[train_idxs], y[train_idxs], pipe.steps,
-                                params=pipe_params,
-                                param_routing=pipe.param_routing,
-                                fit_params=pipe_fit_params)
-                            for pipe_params in [best_params])[0]
-                    if args.scv_verbose == 0:
-                        print(flush=True)
-                else:
-                    best_index = search.best_index_
-                    best_params = search.best_params_
-                    best_pipe = search.best_estimator_
                 param_cv_scores = add_param_cv_scores(search, param_grid_dict,
                                                       param_cv_scores)
                 final_feature_meta = transform_feature_meta(best_pipe,
