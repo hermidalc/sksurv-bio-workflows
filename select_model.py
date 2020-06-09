@@ -1051,9 +1051,11 @@ def run_model_selection():
                 ax_slr.tick_params(labelsize=args.axis_font_size)
                 ax_slr.grid(True, alpha=0.3)
         if args.save_models:
+            model_name = (dataset_name.replace('eset', args.save_model_code)
+                          if args.save_model_code is not None else
+                          dataset_name)
             best_pipe = unset_pipe_memory(best_pipe)
-            dump(best_pipe, '{}/{}_model.pkl'
-                 .format(args.out_dir, dataset_name))
+            dump(best_pipe, '{}/{}_model.pkl'.format(args.out_dir, model_name))
     # train-test nested cv
     else:
         split_models = []
@@ -1239,18 +1241,21 @@ def run_model_selection():
                 split_models.append(best_pipe)
             if args.pipe_memory:
                 memory.clear(warn=False)
+        model_name = (dataset_name.replace('eset', args.save_model_code)
+                      if args.save_model_code is not None else
+                      dataset_name)
         if args.save_models:
             dump(split_models, '{}/{}_split_models.pkl'
-                 .format(args.out_dir, dataset_name))
+                 .format(args.out_dir, model_name))
         if args.save_results:
             dump(split_results, '{}/{}_split_results.pkl'
-                 .format(args.out_dir, dataset_name))
+                 .format(args.out_dir, model_name))
             dump(param_cv_scores, '{}/{}_param_cv_scores.pkl'
-                 .format(args.out_dir, dataset_name))
+                 .format(args.out_dir, model_name))
             dump(risk_scores, '{}/{}_risk_scores.pkl'
-                 .format(args.out_dir, dataset_name))
+                 .format(args.out_dir, model_name))
             r_base.saveRDS(risk_scores, '{}/{}_risk_scores.rds'
-                           .format(args.out_dir, dataset_name))
+                           .format(args.out_dir, model_name))
         if param_grid_dict_alphas is not None:
             param_grid_dict[cnet_srv_a_param] = np.mean(
                 param_grid_dict_alphas, axis=0)
@@ -1380,10 +1385,13 @@ def run_model_selection():
                     how='left')
                 feature_results_floatfmt.append('.4f')
         if args.save_results:
+            model_name = (dataset_name.replace('eset', args.save_model_code)
+                          if args.save_model_code is not None else
+                          dataset_name)
             dump(feature_results, '{}/{}_feature_results.pkl'
-                 .format(args.out_dir, dataset_name))
+                 .format(args.out_dir, model_name))
             r_base.saveRDS(feature_results, '{}/{}_feature_results.rds'
-                           .format(args.out_dir, dataset_name))
+                           .format(args.out_dir, model_name))
         if args.verbose > 0:
             print('Overall Feature Ranking:')
             if feature_weights is not None:
@@ -1619,6 +1627,8 @@ parser.add_argument('--save-models', default=False, action='store_true',
                     help='save models')
 parser.add_argument('--save-results', default=False, action='store_true',
                     help='save results')
+parser.add_argument('--save-model-code', type=str,
+                    help='save model code')
 parser.add_argument('--n-jobs', type=int, default=-1,
                     help='num parallel jobs')
 parser.add_argument('--parallel-backend', type=str, default='loky',
