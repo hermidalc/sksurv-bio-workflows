@@ -40,8 +40,8 @@ from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
 from sklearn.model_selection import ParameterGrid, ParameterSampler
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import (
-    MinMaxScaler, OneHotEncoder, PowerTransformer, RobustScaler,
-    StandardScaler)
+    MinMaxScaler, OneHotEncoder, OrdinalEncoder, PowerTransformer,
+    RobustScaler, StandardScaler)
 from sksurv.base import SurvivalAnalysisMixin
 from sksurv.linear_model import CoxnetSurvivalAnalysis
 from sksurv.metrics import (concordance_index_censored, concordance_index_ipcw,
@@ -251,6 +251,18 @@ def load_dataset(dataset_file):
                            or is_string_dtype(sample_meta[sample_meta_col]))
             if args.test_dataset or not is_category:
                 X[sample_meta_col] = sample_meta[sample_meta_col]
+                new_feature_names.append(sample_meta_col)
+            elif (args.ordinal_encode_cols is not None
+                  and sample_meta_col in args.ordinal_encode_cols):
+                if sample_meta_col not in ordinal_encoder_categories:
+                    run_cleanup()
+                    raise RuntimeError('No ordinal encoder categories config '
+                                       'exists for {}'.format(sample_meta_col))
+                ode = OrdinalEncoder(
+                    categories=[ordinal_encoder_categories[sample_meta_col]])
+                ode.fit(sample_meta[[sample_meta_col]])
+                X[sample_meta_col] = ode.transform(
+                    sample_meta[[sample_meta_col]])
                 new_feature_names.append(sample_meta_col)
             else:
                 num_categories = sample_meta[sample_meta_col][
@@ -1468,6 +1480,8 @@ parser.add_argument('--sample-meta-surv-col', type=str,
                     help='sample metadata survival days column name')
 parser.add_argument('--sample-meta-cols', type=str, nargs='+',
                     help='sample metadata columns')
+parser.add_argument('--ordinal-encode-cols', type=str, nargs='+',
+                    help='sample metadata columns to ordinal encode')
 parser.add_argument('--penalty-factor-meta-col', type=str,
                     default='Penalty Factor',
                     help='penalty_factor feature metadata column name')
@@ -1963,10 +1977,12 @@ params_lin_xticks = [
     'srv__estimator__l1_ratio',
     'srv__estimator__n_alphas',
     'srv__estimator__rank_ratio']
+
 params_log_xticks = [
     'srv__alpha',
     'srv__alphas',
     'srv__estimator__alpha']
+
 params_fixed_xticks = [
     'slr',
     'slr__cols',
@@ -1980,11 +1996,16 @@ params_fixed_xticks = [
     'srv',
     'srv__estimator__optimizer',
     'srv__optimizer']
+
 metric_label = {
     'score': 'C-index',
     'concordance_index_censored': 'C-index',
     'concordance_index_ipcw': 'IPCW C-index',
     'cumulative_dynamic_auc': 'CD ROC AUC'}
+
+ordinal_encoder_categories = {
+    'tumor_stage': ['NA', 'x', 'i', 'i or ii', 'ii', 'iii', 'iv'],
+}
 
 run_model_selection()
 if args.show_figs or args.save_figs:
