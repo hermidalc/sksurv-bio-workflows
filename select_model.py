@@ -736,7 +736,7 @@ def update_coxnet_param_grid_dict(search, param_grid_dict):
 def run_model_selection():
     (dataset_name, X, y, groups, sample_meta, sample_weights, feature_meta,
      col_trf_columns) = load_dataset(args.train_dataset)
-    pipe, pipe_name, pipe_props, param_grid, param_grid_dict, _= (
+    pipe, pipe_name, pipe_props, param_grid, param_grid_dict, _ = (
         setup_pipe_and_param_grid(args.pipe_steps, col_trf_columns))
     if args.sample_meta_cols:
         srv_has_penalty_factor = False
