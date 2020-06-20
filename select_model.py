@@ -379,6 +379,18 @@ def setup_pipe_and_param_grid(cmd_pipe_steps, col_trf_columns=None):
             param_grid_estimators)
 
 
+def get_param_type(param):
+    pipe_step_type_regex = re.compile(
+        r'^({})\d+$'.format('|'.join(pipeline_step_types)))
+    param_parts = param.split('__')
+    param_parts_start_idx = [i for i, p in enumerate(param_parts)
+                             if pipe_step_type_regex.match(p)][-1]
+    param_parts[param_parts_start_idx] = pipe_step_type_regex.sub(
+        r'\1', param_parts[param_parts_start_idx])
+    param_type = '__'.join(param_parts[param_parts_start_idx:])
+    return param_type
+
+
 def fit_pipeline(X, y, steps, params=None, param_routing=None,
                  fit_params=None):
     pipe = ExtendedPipeline(steps, memory=memory, param_routing=param_routing)
@@ -582,14 +594,7 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                 mean_cv_scores[metric] = np.ravel(param_metric_scores)
                 std_cv_scores[metric] = np.ravel(param_metric_stdev)
         plt.figure(figsize=(args.fig_width, args.fig_height))
-        pipe_step_type_regex = re.compile(
-            r'^({})\d+$'.format('|'.join(pipeline_step_types)))
-        param_parts = param.split('__')
-        param_parts_start_idx = [i for i, p in enumerate(param_parts)
-                                 if pipe_step_type_regex.match(p)][-1]
-        param_parts[param_parts_start_idx] = pipe_step_type_regex.sub(
-            r'\1', param_parts[param_parts_start_idx])
-        param_type = '__'.join(param_parts[param_parts_start_idx:])
+        param_type = get_param_type(param)
         if param_type in params_lin_xticks:
             x_axis = param_grid_dict[param]
             if all(0 <= x <= 1 for x in x_axis):
@@ -831,6 +836,58 @@ def run_model_selection():
         cv_splitter = SurvivalStratifiedKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
             shuffle=True)
+    if groups is None:
+        if args.test_use_ssplit:
+            test_splitter = SurvivalStratifiedShuffleSplit(
+                n_splits=args.test_splits, test_size=args.test_size,
+                random_state=args.random_seed)
+        elif args.test_repeats > 0:
+            test_splitter = RepeatedSurvivalStratifiedKFold(
+                n_splits=args.test_splits, n_repeats=args.test_repeats,
+                random_state=args.random_seed)
+        else:
+            test_splitter = SurvivalStratifiedKFold(
+                n_splits=args.test_splits, random_state=args.random_seed,
+                shuffle=True)
+    elif args.test_use_ssplit:
+        if 'sample_weight' in search_param_routing['estimator']:
+            test_splitter = SurvivalStratifiedGroupShuffleSplit(
+                n_splits=args.test_splits, test_size=args.test_size,
+                random_state=args.random_seed)
+        else:
+            test_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
+                n_splits=args.test_splits, test_size=args.test_size,
+                random_state=args.random_seed)
+    elif args.test_repeats > 0:
+        if 'sample_weight' in search_param_routing['estimator']:
+            test_splitter = RepeatedSurvivalStratifiedGroupKFold(
+                n_splits=args.test_splits, n_repeats=args.test_repeats,
+                random_state=args.random_seed)
+        else:
+            test_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
+                n_splits=args.test_splits, n_repeats=args.test_repeats,
+                random_state=args.random_seed)
+    elif 'sample_weight' in search_param_routing['estimator']:
+        test_splitter = SurvivalStratifiedGroupKFold(
+            n_splits=args.test_splits, random_state=args.random_seed,
+            shuffle=True)
+    else:
+        test_splitter = SurvivalStratifiedSampleFromGroupKFold(
+            n_splits=args.test_splits, random_state=args.random_seed,
+            shuffle=True)
+    min_train_samples = (X.shape[0] if args.test_dataset else
+                         min(train.size for train, _ in
+                             test_splitter.split(X, y, groups)))
+    for params in param_grid:
+        for param, param_values in params.items():
+            param_type = get_param_type(param)
+            if param_type in params_k_selected_features:
+                params[param] = param_values[param_values <= min_train_samples]
+    for param, param_values in param_grid_dict.items():
+        param_type = get_param_type(param)
+        if param_type in params_k_selected_features:
+            param_grid_dict[param] = (
+                param_values[param_values <= min_train_samples])
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
@@ -1052,53 +1109,14 @@ def run_model_selection():
             dump(best_pipe, '{}/{}_model.pkl'.format(args.out_dir, model_name))
     # train-test nested cv
     else:
+        if args.verbose > 0:
+            print('Test CV:', end=' ')
+            pprint(test_splitter)
         split_models = []
         split_results = []
         param_cv_scores = {}
         param_grid_dict_alphas = None
         risk_scores = None
-        if groups is None:
-            if args.test_use_ssplit:
-                test_splitter = SurvivalStratifiedShuffleSplit(
-                    n_splits=args.test_splits, test_size=args.test_size,
-                    random_state=args.random_seed)
-            elif args.test_repeats > 0:
-                test_splitter = RepeatedSurvivalStratifiedKFold(
-                    n_splits=args.test_splits, n_repeats=args.test_repeats,
-                    random_state=args.random_seed)
-            else:
-                test_splitter = SurvivalStratifiedKFold(
-                    n_splits=args.test_splits, random_state=args.random_seed,
-                    shuffle=True)
-        elif args.test_use_ssplit:
-            if 'sample_weight' in search_param_routing['estimator']:
-                test_splitter = SurvivalStratifiedGroupShuffleSplit(
-                    n_splits=args.test_splits, test_size=args.test_size,
-                    random_state=args.random_seed)
-            else:
-                test_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
-                    n_splits=args.test_splits, test_size=args.test_size,
-                    random_state=args.random_seed)
-        elif args.test_repeats > 0:
-            if 'sample_weight' in search_param_routing['estimator']:
-                test_splitter = RepeatedSurvivalStratifiedGroupKFold(
-                    n_splits=args.test_splits, n_repeats=args.test_repeats,
-                    random_state=args.random_seed)
-            else:
-                test_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
-                    n_splits=args.test_splits, n_repeats=args.test_repeats,
-                    random_state=args.random_seed)
-        elif 'sample_weight' in search_param_routing['estimator']:
-            test_splitter = SurvivalStratifiedGroupKFold(
-                n_splits=args.test_splits, random_state=args.random_seed,
-                shuffle=True)
-        else:
-            test_splitter = SurvivalStratifiedSampleFromGroupKFold(
-                n_splits=args.test_splits, random_state=args.random_seed,
-                shuffle=True)
-        if args.verbose > 0:
-            print('Test CV:', end=' ')
-            pprint(test_splitter)
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             base_search = clone(search)
             srv_step_name = pipe.steps[-1][0]
@@ -1987,6 +2005,11 @@ params_fixed_xticks = [
     'srv__estimator__optimizer',
     'srv__optimizer']
 
+params_k_selected_features = [
+    'slr__k',
+    'slr__max_features',
+    'clf__n_features_to_select']
+
 metric_label = {
     'score': 'C-index',
     'concordance_index_censored': 'C-index',
@@ -1994,8 +2017,7 @@ metric_label = {
     'cumulative_dynamic_auc': 'CD ROC AUC'}
 
 ordinal_encoder_categories = {
-    'tumor_stage': ['NA', 'x', 'i', 'i or ii', 'ii', 'iii', 'iv'],
-}
+    'tumor_stage': ['NA', 'x', 'i', 'i or ii', 'ii', 'iii', 'iv']}
 
 run_model_selection()
 if args.show_figs or args.save_figs:
