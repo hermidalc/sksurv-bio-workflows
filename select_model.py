@@ -1937,7 +1937,7 @@ pipe_config = {
                                          random_state=args.random_seed),
                          tune_step_at=args.rfe_srv_tune_step_at,
                          reducing_step=args.rfe_srv_reducing_step,
-                         verbose=args.rfe_srv_verbose),
+                         verbose=args.rfe_srv_verbose, memory=memory),
         'param_grid': {
             'estimator__alpha': cv_params['fsvm_srv_a'],
             'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
