@@ -37,6 +37,7 @@ from rpy2.robjects.packages import importr
 from sklearn.base import BaseEstimator, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
+from sklearn.feature_selection import RFE
 from sklearn.model_selection import ParameterGrid, ParameterSampler
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import (
@@ -55,9 +56,10 @@ pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
-    ColumnSelector, EdgeRFilterByExpr, NanoStringEndogenousSelector, RFE)
-from sklearn_extensions.model_selection import (ExtendedGridSearchCV,
-                                                ExtendedRandomizedSearchCV)
+    ColumnSelector, EdgeRFilterByExpr, ExtendedRFE,
+    NanoStringEndogenousSelector)
+from sklearn_extensions.model_selection import (
+    ExtendedGridSearchCV, ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
     DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover, LogTransformer,
@@ -1007,8 +1009,8 @@ def run_model_selection():
                                      if best_pipe.param_routing else {})
             tf_pipe_param_routing['slrc'] = (
                 pipe_config['ColumnSelector']['param_routing'])
-            if isinstance(best_pipe[-1], (
-                    RFE, SelectFromUnivariateSurvivalModel)):
+            if isinstance(best_pipe[-1],
+                          (RFE, SelectFromUnivariateSurvivalModel)):
                 final_step_name = best_pipe.steps[-1][0]
                 final_estimator = best_pipe.steps[-1][1].estimator
                 final_estimator_key = type(final_estimator).__qualname__
@@ -1933,11 +1935,12 @@ pipe_config = {
             'estimator__optimizer': cv_params['fsvm_srv_o']},
         'param_routing': ['feature_meta']},
     'RFE-FastSurvivalSVM': {
-        'estimator': RFE(FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
-                                         random_state=args.random_seed),
-                         tune_step_at=args.rfe_srv_tune_step_at,
-                         reducing_step=args.rfe_srv_reducing_step,
-                         verbose=args.rfe_srv_verbose, memory=memory),
+        'estimator': ExtendedRFE(
+            FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
+                            random_state=args.random_seed),
+            tune_step_at=args.rfe_srv_tune_step_at,
+            reducing_step=args.rfe_srv_reducing_step,
+            verbose=args.rfe_srv_verbose, memory=memory),
         'param_grid': {
             'estimator__alpha': cv_params['fsvm_srv_a'],
             'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
