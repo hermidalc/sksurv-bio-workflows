@@ -1754,17 +1754,12 @@ robjects.r('options(\'java.parameters\'="-Xmx{:d}m")'
 if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
     memory = Memory(location=cachedir, verbose=0)
-    fsvm_srv = CachedFastSurvivalSVM(memory=memory,
-                                     max_iter=args.fsvm_srv_max_iter,
-                                     random_state=args.random_seed)
     cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
         memory=memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
         normalize=False)
 else:
     memory = None
-    fsvm_srv = FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
-                               random_state=args.random_seed)
     cnet_srv = ExtendedCoxnetSurvivalAnalysis(
         alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
@@ -1938,7 +1933,9 @@ pipe_config = {
             'estimator__optimizer': cv_params['fsvm_srv_o']},
         'param_routing': ['feature_meta']},
     'RFE-FastSurvivalSVM': {
-        'estimator': RFE(fsvm_srv, tune_step_at=args.rfe_srv_tune_step_at,
+        'estimator': RFE(FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
+                                         random_state=args.random_seed),
+                         tune_step_at=args.rfe_srv_tune_step_at,
                          reducing_step=args.rfe_srv_reducing_step,
                          verbose=args.rfe_srv_verbose),
         'param_grid': {
