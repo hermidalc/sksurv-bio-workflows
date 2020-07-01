@@ -1551,6 +1551,9 @@ parser.add_argument('--cph-srv-base-alpha', type=float, default=1e-5,
                     help='CoxPHSurvivalAnalysis base_alpha')
 parser.add_argument('--cph-srv-max-iter', type=int, default=1000000,
                     help='FastCoxPHSurvivalAnalysis max_iter')
+parser.add_argument('--cph-srv-fit-baseline-model', default=False,
+                    action='store_true',
+                    help='FastCoxPHSurvivalAnalysis fit_baseline_model')
 parser.add_argument('--cnet-srv-l1r', type=float, nargs='+',
                     help='CoxnetSurvivalAnalysis l1_ratio')
 parser.add_argument('--cnet-srv-l1r-min', type=float,
@@ -1565,6 +1568,9 @@ parser.add_argument('--cnet-srv-alpha-min-ratio', type=float, default=0.1,
                     help='CoxnetSurvivalAnalysis alpha_min_ratio')
 parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
                     help='CoxnetSurvivalAnalysis max_iter')
+parser.add_argument('--cnet-srv-fit-baseline-model', default=False,
+                    action='store_true',
+                    help='CoxnetSurvivalAnalysis fit_baseline_model')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
@@ -1716,6 +1722,10 @@ if args.filter_warnings:
                 'ignore', category=UserWarning,
                 message='^all coefficients are zero',
                 module='sksurv_extensions.linear_model._coxnet')
+            warnings.filterwarnings(
+                'ignore', category=RuntimeWarning,
+                message='^overflow encountered in exp',
+                module='sksurv.linear_model.coxph')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
@@ -1734,6 +1744,9 @@ if args.filter_warnings:
             python_warnings.append(':'.join(
                 ['ignore', 'all coefficients are zero', 'UserWarning',
                  'sksurv_extensions.linear_model._coxnet']))
+            python_warnings.append(':'.join(
+                ['ignore', 'overflow encountered in exp', 'RuntimeWarning',
+                 'sksurv.linear_model.coxph']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
@@ -1753,14 +1766,14 @@ if args.pipe_memory:
     memory = Memory(location=cachedir, verbose=0)
     cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
         memory=memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
-        fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
-        normalize=False)
+        fit_baseline_model=args.cnet_srv_fit_baseline_model,
+        max_iter=args.cnet_srv_max_iter, normalize=False)
 else:
     memory = None
     cnet_srv = ExtendedCoxnetSurvivalAnalysis(
         alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
-        fit_baseline_model=False, max_iter=args.cnet_srv_max_iter,
-        normalize=False)
+        fit_baseline_model=args.cnet_srv_fit_baseline_model,
+        max_iter=args.cnet_srv_max_iter, normalize=False)
 
 pipeline_step_types = ('slr', 'trf', 'srv')
 cv_params = {k: v for k, v in vars(args).items()
@@ -1912,9 +1925,10 @@ pipe_config = {
         'param_routing': ['feature_meta']},
     'SelectFromUnivariateSurvivalModel-FastCoxPHSurvivalAnalysis': {
         'estimator': SelectFromUnivariateSurvivalModel(
-            FastCoxPHSurvivalAnalysis(fit_baseline_model=False,
-                                      max_iter=args.cph_srv_max_iter,
-                                      normalize=False), memory=memory),
+            FastCoxPHSurvivalAnalysis(
+                fit_baseline_model=args.cph_srv_fit_baseline_model,
+                max_iter=args.cph_srv_max_iter, normalize=False),
+            memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']},
@@ -1952,8 +1966,8 @@ pipe_config = {
         'param_routing': ['feature_meta']},
     'FastCoxPHSurvivalAnalysis': {
         'estimator': FastCoxPHSurvivalAnalysis(
-            fit_baseline_model=False, max_iter=args.cph_srv_max_iter,
-            normalize=False),
+            fit_baseline_model=args.cph_srv_fit_baseline_model,
+            max_iter=args.cph_srv_max_iter, normalize=False),
         'param_grid': {
             'alpha': cv_params['cph_srv_a']},
         'param_routing': ['feature_meta']},
