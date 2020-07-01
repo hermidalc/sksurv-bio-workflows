@@ -33,7 +33,7 @@ dependencies:
   - r-nloptr
   - r-statmod
   - rpy2=3.1
-  - scikit-learn=0.22.1
+  - scikit-learn=0.22.2
   - scikit-survival
   - seaborn
   - tabulate
