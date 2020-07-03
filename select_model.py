@@ -107,9 +107,14 @@ def load_dataset(dataset_file):
         groups = np.array(sample_meta['Group'], dtype=int)
         _, group_indices, group_counts = np.unique(
             groups, return_inverse=True, return_counts=True)
+        if 'GroupWeight' in sample_meta.columns:
+            group_weights = np.array(sample_meta['GroupWeight'], dtype=float)
+        else:
+            group_weights = None
         sample_weights = (np.max(group_counts) / group_counts)[group_indices]
     else:
         groups = None
+        group_weights = None
         sample_weights = None
     try:
         feature_meta = r_biobase.fData(eset)
@@ -208,8 +213,8 @@ def load_dataset(dataset_file):
                         is_bool_dtype(d) or is_categorical_dtype(d)
                         or is_object_dtype(d) or is_string_dtype(d)))
                     .to_numpy())
-    return (dataset_name, X, y, groups, sample_meta, sample_weights,
-            feature_meta, col_trf_columns)
+    return (dataset_name, X, y, groups, group_weights, sample_weights,
+            sample_meta, feature_meta, col_trf_columns)
 
 
 def setup_pipe_and_param_grid(cmd_pipe_steps, col_trf_columns=None):
@@ -736,8 +741,8 @@ def update_coxnet_param_grid_dict(search, param_grid_dict):
 
 
 def run_model_selection():
-    (dataset_name, X, y, groups, sample_meta, sample_weights, feature_meta,
-     col_trf_columns) = load_dataset(args.train_dataset)
+    (dataset_name, X, y, groups, group_weights, sample_weights, sample_meta,
+     feature_meta, col_trf_columns) = load_dataset(args.train_dataset)
     pipe, pipe_step_names, pipe_props, param_grid, param_grid_dict, _ = (
         setup_pipe_and_param_grid(args.pipe_steps, col_trf_columns))
     if isinstance(pipe[0], ColumnTransformer):
@@ -767,8 +772,13 @@ def run_model_selection():
         if not pipe_has_penalty_factor:
             feature_meta.drop(columns=[args.penalty_factor_meta_col],
                               inplace=True)
-    search_param_routing = ({'cv': 'groups', 'estimator': [], 'scoring': []}
-                            if groups is not None else None)
+    if groups is not None:
+        search_param_routing = {'estimator': [], 'scoring': []}
+        search_param_routing['cv'] = ('groups' if group_weights is None else
+                                      {'groups': 'groups',
+                                       'weights': 'group_weights'})
+    else:
+        search_param_routing = None
     if pipe.param_routing:
         if search_param_routing is None:
             search_param_routing = {'estimator': [], 'scoring': []}
@@ -778,6 +788,7 @@ def run_model_selection():
                 search_param_routing['scoring'].append(param)
     scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
     scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
+    cv_split_params = {}
     if groups is None:
         if args.scv_use_ssplit:
             cv_splitter = SurvivalStratifiedShuffleSplit(
@@ -800,6 +811,7 @@ def run_model_selection():
             cv_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
                 n_splits=args.scv_splits, test_size=args.scv_size,
                 random_state=args.random_seed)
+            cv_split_params = {'weights': group_weights}
         else:
             cv_splitter = SurvivalStratifiedShuffleSplit(
                 n_splits=args.scv_splits, test_size=args.scv_size,
@@ -813,6 +825,7 @@ def run_model_selection():
             cv_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
                 n_splits=args.scv_splits, n_repeats=args.scv_repeats,
                 random_state=args.random_seed)
+            cv_split_params = {'weights': group_weights}
         else:
             cv_splitter = RepeatedSurvivalStratifiedKFold(
                 n_splits=args.scv_splits, n_repeats=args.scv_repeats,
@@ -825,10 +838,12 @@ def run_model_selection():
         cv_splitter = SurvivalStratifiedSampleFromGroupKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
             shuffle=True)
+        cv_split_params = {'weights': group_weights}
     else:
         cv_splitter = SurvivalStratifiedKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
             shuffle=True)
+    test_split_params = {}
     if groups is None:
         if args.test_use_ssplit:
             test_splitter = SurvivalStratifiedShuffleSplit(
@@ -851,6 +866,7 @@ def run_model_selection():
             test_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
                 n_splits=args.test_splits, test_size=args.test_size,
                 random_state=args.random_seed)
+            test_split_params = {'weights': group_weights}
     elif args.test_repeats > 0:
         if 'sample_weight' in search_param_routing['estimator']:
             test_splitter = RepeatedSurvivalStratifiedGroupKFold(
@@ -860,6 +876,7 @@ def run_model_selection():
             test_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
                 n_splits=args.test_splits, n_repeats=args.test_repeats,
                 random_state=args.random_seed)
+            test_split_params = {'weights': group_weights}
     elif 'sample_weight' in search_param_routing['estimator']:
         test_splitter = SurvivalStratifiedGroupKFold(
             n_splits=args.test_splits, random_state=args.random_seed,
@@ -868,10 +885,12 @@ def run_model_selection():
         test_splitter = SurvivalStratifiedSampleFromGroupKFold(
             n_splits=args.test_splits, random_state=args.random_seed,
             shuffle=True)
+        test_split_params = {'weights': group_weights}
     if args.skb_slr_k_lim:
-        min_train_samples = (X.shape[0] if args.test_dataset else
-                             min(train.size for train, _ in
-                                 test_splitter.split(X, y, groups)))
+        min_train_samples = (
+            X.shape[0] if args.test_dataset else
+            min(train.size for train, _ in test_splitter.split(
+                X, y, groups, **test_split_params)))
         for params in param_grid:
             for param, param_values in params.items():
                 param_type = get_param_type(param)
@@ -919,6 +938,10 @@ def run_model_selection():
         if groups is not None:
             print('Groups:')
             pprint(groups)
+            if (group_weights is not None and (
+                    test_split_params or cv_split_params)):
+                print('Group weights:')
+                pprint(group_weights)
         if (sample_weights is not None and 'sample_weight' in
                 search_param_routing['estimator']):
             print('Sample weights:')
@@ -939,6 +962,8 @@ def run_model_selection():
         search_fit_params = pipe_fit_params.copy()
         if groups is not None:
             search_fit_params['groups'] = groups
+            if group_weights is not None and cv_split_params:
+                search_fit_params['group_weights'] = group_weights
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             search = add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params)
         with parallel_backend(args.parallel_backend,
@@ -972,8 +997,8 @@ def run_model_selection():
         test_datasets = natsorted(
             list(set(args.test_dataset) - set(args.train_dataset)))
         for test_dataset in test_datasets:
-            (test_dataset_name, X_test, y_test, _, test_sample_meta,
-             test_sample_weights, test_feature_meta, _) = (
+            (test_dataset_name, X_test, y_test, _, _, test_sample_weights,
+             test_sample_meta, test_feature_meta, _) = (
                  load_dataset(test_dataset))
             pipe_predict_params = {}
             if 'sample_meta' in pipe_fit_params:
@@ -1066,8 +1091,8 @@ def run_model_selection():
             test_metric_colors = sns.color_palette(
                 'hls', len(test_datasets) * len(args.scv_scoring))
             for test_idx, test_dataset in enumerate(test_datasets):
-                (test_dataset_name, X_test, y_test, _, test_sample_meta,
-                 test_sample_weights, test_feature_meta, _) = (
+                (test_dataset_name, X_test, y_test, _, _, test_sample_weights,
+                 test_sample_meta, test_feature_meta, _) = (
                      load_dataset(test_dataset))
                 pipe_predict_params = {}
                 if 'sample_meta' in pipe_fit_params:
@@ -1119,7 +1144,7 @@ def run_model_selection():
             cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
             cnet_srv_max_num_alphas = get_coxnet_max_num_alphas(search)
         for split_idx, (train_idxs, test_idxs) in enumerate(
-                test_splitter.split(X, y, groups)):
+                test_splitter.split(X, y, groups, **test_split_params)):
             pipe_fit_params = {}
             if search_param_routing:
                 if 'sample_meta' in search_param_routing['estimator']:
@@ -1134,6 +1159,9 @@ def run_model_selection():
             search_fit_params = pipe_fit_params.copy()
             if groups is not None:
                 search_fit_params['groups'] = groups[train_idxs]
+                if group_weights is not None and cv_split_params:
+                    search_fit_params['group_weights'] = (
+                        group_weights[train_idxs])
             if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
                 search = add_coxnet_alpha_param_grid(
                     clone(base_search), X.iloc[train_idxs], y[train_idxs],
