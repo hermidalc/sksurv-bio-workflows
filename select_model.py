@@ -686,6 +686,10 @@ def add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params):
             cnet_pipe = clone(pipe)
             cnet_pipe.set_params(**params)
             cnet_pipe.steps[-1] = (srv_step_name, cnet_pipe[-1].estimator)
+            for param in cnet_pipe.get_params(deep=True).keys():
+                param_parts = param.split('__')
+                if param_parts[-1] == 'fit_baseline_model':
+                    cnet_pipe.set_params(**{param: False})
             cnet_pipes.append(cnet_pipe)
     print('Generating CoxnetSurvivalAnalysis alpha path for {} pipeline{}'
           .format(len(cnet_pipes), 's' if len(cnet_pipes) > 1 else ''),
