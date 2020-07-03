@@ -788,7 +788,7 @@ def run_model_selection():
                 search_param_routing['scoring'].append(param)
     scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
     scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
-    cv_split_params = {}
+    pass_cv_group_weights = False
     if groups is None:
         if args.scv_use_ssplit:
             cv_splitter = SurvivalStratifiedShuffleSplit(
@@ -811,7 +811,7 @@ def run_model_selection():
             cv_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
                 n_splits=args.scv_splits, test_size=args.scv_size,
                 random_state=args.random_seed)
-            cv_split_params = {'weights': group_weights}
+            pass_cv_group_weights = True
         else:
             cv_splitter = SurvivalStratifiedShuffleSplit(
                 n_splits=args.scv_splits, test_size=args.scv_size,
@@ -825,7 +825,7 @@ def run_model_selection():
             cv_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
                 n_splits=args.scv_splits, n_repeats=args.scv_repeats,
                 random_state=args.random_seed)
-            cv_split_params = {'weights': group_weights}
+            pass_cv_group_weights = True
         else:
             cv_splitter = RepeatedSurvivalStratifiedKFold(
                 n_splits=args.scv_splits, n_repeats=args.scv_repeats,
@@ -838,7 +838,7 @@ def run_model_selection():
         cv_splitter = SurvivalStratifiedSampleFromGroupKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
             shuffle=True)
-        cv_split_params = {'weights': group_weights}
+        pass_cv_group_weights = True
     else:
         cv_splitter = SurvivalStratifiedKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
@@ -939,7 +939,7 @@ def run_model_selection():
             print('Groups:')
             pprint(groups)
             if (group_weights is not None and (
-                    test_split_params or cv_split_params)):
+                    test_split_params or pass_cv_group_weights)):
                 print('Group weights:')
                 pprint(group_weights)
         if (sample_weights is not None and 'sample_weight' in
@@ -962,7 +962,7 @@ def run_model_selection():
         search_fit_params = pipe_fit_params.copy()
         if groups is not None:
             search_fit_params['groups'] = groups
-            if group_weights is not None and cv_split_params:
+            if group_weights is not None and pass_cv_group_weights:
                 search_fit_params['group_weights'] = group_weights
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             search = add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params)
@@ -1159,7 +1159,7 @@ def run_model_selection():
             search_fit_params = pipe_fit_params.copy()
             if groups is not None:
                 search_fit_params['groups'] = groups[train_idxs]
-                if group_weights is not None and cv_split_params:
+                if group_weights is not None and pass_cv_group_weights:
                     search_fit_params['group_weights'] = (
                         group_weights[train_idxs])
             if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
