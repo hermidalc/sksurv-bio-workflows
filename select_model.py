@@ -1758,6 +1758,9 @@ if args.filter_warnings:
                 'ignore', category=RuntimeWarning,
                 message='^overflow encountered in exp',
                 module='sksurv.linear_model.coxph')
+            warnings.filterwarnings(
+                'ignore', category=RuntimeWarning,
+                message='^invalid value encountered in true_divide')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
@@ -1779,6 +1782,9 @@ if args.filter_warnings:
             python_warnings.append(':'.join(
                 ['ignore', 'overflow encountered in exp', 'RuntimeWarning',
                  'sksurv.linear_model.coxph']))
+            python_warnings.append(':'.join(
+                ['ignore', 'invalid value encountered in true_divide',
+                 'RuntimeWarning']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
