@@ -1760,6 +1760,10 @@ if args.filter_warnings:
                 module='sksurv.linear_model.coxph')
             warnings.filterwarnings(
                 'ignore', category=RuntimeWarning,
+                message='^divide by zero encountered in true_divide',
+                module='sksurv.linear_model.coxph')
+            warnings.filterwarnings(
+                'ignore', category=RuntimeWarning,
                 message='^invalid value encountered in true_divide')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
@@ -1782,6 +1786,9 @@ if args.filter_warnings:
             python_warnings.append(':'.join(
                 ['ignore', 'overflow encountered in exp', 'RuntimeWarning',
                  'sksurv.linear_model.coxph']))
+            python_warnings.append(':'.join(
+                ['ignore', 'divide by zero encountered in true_divide',
+                 'RuntimeWarning', 'sksurv.linear_model.coxph']))
             python_warnings.append(':'.join(
                 ['ignore', 'invalid value encountered in true_divide',
                  'RuntimeWarning']))
