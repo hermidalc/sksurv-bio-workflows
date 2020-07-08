@@ -744,6 +744,21 @@ def update_coxnet_param_grid_dict(search, param_grid_dict):
     return param_grid_dict
 
 
+def unset_pipe_memory(pipe):
+    for param, param_value in pipe.get_params(deep=True).items():
+        if isinstance(param_value, Memory):
+            pipe.set_params(**{param: None})
+    for estimator in pipe:
+        if isinstance(estimator, ColumnTransformer):
+            for _, trf_transformer, _ in estimator.transformers_:
+                if isinstance(trf_transformer, BaseEstimator):
+                    for param, param_value in (
+                            trf_transformer.get_params(deep=True).items()):
+                        if isinstance(param_value, Memory):
+                            trf_transformer.set_params(**{param: None})
+    return pipe
+
+
 def run_model_selection():
     (dataset_name, X, y, groups, group_weights, sample_weights, sample_meta,
      feature_meta, col_trf_columns) = load_dataset(args.train_dataset)
@@ -1127,10 +1142,7 @@ def run_model_selection():
                           if args.save_model_code is not None else
                           dataset_name)
             if args.pipe_memory:
-                for param, param_value in (
-                        best_pipe.get_params(deep=True).items()):
-                    if isinstance(param_value, Memory):
-                        best_pipe.set_params(**{param: None})
+                best_pipe = unset_pipe_memory(best_pipe)
             dump(best_pipe, '{}/{}_model.pkl'.format(args.out_dir, model_name))
     # train-test nested cv
     else:
@@ -1277,10 +1289,7 @@ def run_model_selection():
             split_results.append(split_result)
             if args.save_models:
                 if args.pipe_memory and best_pipe is not None:
-                    for param, param_value in (
-                            best_pipe.get_params(deep=True).items()):
-                        if isinstance(param_value, Memory):
-                            best_pipe.set_params(**{param: None})
+                    best_pipe = unset_pipe_memory(best_pipe)
                 split_models.append(best_pipe)
             if args.pipe_memory:
                 memory.clear(warn=False)
