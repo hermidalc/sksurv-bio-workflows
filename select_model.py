@@ -1223,6 +1223,8 @@ def run_model_selection():
                     best_pipe, X.iloc[test_idxs], y[test_idxs],
                     pipe_predict_params,
                     test_sample_weights=test_sample_weights)
+                surv_funcs = best_pipe.predict_survival_function(
+                    X.iloc[test_idxs], **pipe_predict_params)
             except Exception as e:
                 if args.scv_error_score == 'raise':
                     raise
@@ -1278,7 +1280,8 @@ def run_model_selection():
                     else:
                         print(tabulate(final_feature_meta, headers='keys'))
                 split_result = {'feature_meta': final_feature_meta,
-                                'scores': split_scores}
+                                'scores': split_scores,
+                                'surv_funcs': surv_funcs}
                 split_risk_score_col = 'Risk Score {:d}'.format(split_idx + 1)
                 split_risk_scores = pd.DataFrame(
                     {split_risk_score_col: split_scores['te']['y_pred']},
@@ -1765,15 +1768,19 @@ if args.filter_warnings:
                 module='sksurv_extensions.linear_model._coxnet')
             warnings.filterwarnings(
                 'ignore', category=RuntimeWarning,
-                message='^overflow encountered in exp',
-                module='sksurv.linear_model.coxph')
-            warnings.filterwarnings(
-                'ignore', category=RuntimeWarning,
                 message='^divide by zero encountered in true_divide',
                 module='sksurv.linear_model.coxph')
             warnings.filterwarnings(
                 'ignore', category=RuntimeWarning,
                 message='^invalid value encountered in true_divide')
+            warnings.filterwarnings(
+                'ignore', category=RuntimeWarning,
+                message='^overflow encountered in exp',
+                module='sksurv.linear_model.coxph')
+            warnings.filterwarnings(
+                'ignore', category=RuntimeWarning,
+                message='^overflow encountered in power',
+                module='sksurv.linear_model.coxph')
     else:
         python_warnings = ([os.environ['PYTHONWARNINGS']]
                            if 'PYTHONWARNINGS' in os.environ else [])
@@ -1793,14 +1800,17 @@ if args.filter_warnings:
                 ['ignore', 'all coefficients are zero', 'UserWarning',
                  'sksurv_extensions.linear_model._coxnet']))
             python_warnings.append(':'.join(
-                ['ignore', 'overflow encountered in exp', 'RuntimeWarning',
-                 'sksurv.linear_model.coxph']))
-            python_warnings.append(':'.join(
                 ['ignore', 'divide by zero encountered in true_divide',
                  'RuntimeWarning', 'sksurv.linear_model.coxph']))
             python_warnings.append(':'.join(
                 ['ignore', 'invalid value encountered in true_divide',
                  'RuntimeWarning']))
+            python_warnings.append(':'.join(
+                ['ignore', 'overflow encountered in exp', 'RuntimeWarning',
+                 'sksurv.linear_model.coxph']))
+            python_warnings.append(':'.join(
+                ['ignore', 'overflow encountered in power', 'RuntimeWarning',
+                 'sksurv.linear_model.coxph']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
