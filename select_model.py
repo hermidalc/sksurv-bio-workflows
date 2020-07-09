@@ -1591,6 +1591,8 @@ parser.add_argument('--cph-srv-max-iter', type=int, default=1000000,
 parser.add_argument('--cph-srv-fit-baseline-model', default=False,
                     action='store_true',
                     help='FastCoxPHSurvivalAnalysis fit_baseline_model')
+parser.add_argument('--cph-srv-normalize', default=False, action='store_true',
+                    help='FastCoxPHSurvivalAnalysis normalize')
 parser.add_argument('--cnet-srv-l1r', type=float, nargs='+',
                     help='CoxnetSurvivalAnalysis l1_ratio')
 parser.add_argument('--cnet-srv-l1r-min', type=float,
@@ -1608,6 +1610,8 @@ parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
 parser.add_argument('--cnet-srv-fit-baseline-model', default=False,
                     action='store_true',
                     help='CoxnetSurvivalAnalysis fit_baseline_model')
+parser.add_argument('--cnet-srv-normalize', default=False, action='store_true',
+                    help='CoxnetSurvivalAnalysis normalize')
 parser.add_argument('--fsvm-srv-ae', type=int, nargs='+',
                     help='FastSurvivalSVM alpha exp')
 parser.add_argument('--fsvm-srv-ae-min', type=int,
@@ -1817,13 +1821,13 @@ if args.pipe_memory:
     cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
         memory=memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=args.cnet_srv_fit_baseline_model,
-        max_iter=args.cnet_srv_max_iter, normalize=False)
+        max_iter=args.cnet_srv_max_iter, normalize=args.cnet_srv_normalize)
 else:
     memory = None
     cnet_srv = ExtendedCoxnetSurvivalAnalysis(
         alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=args.cnet_srv_fit_baseline_model,
-        max_iter=args.cnet_srv_max_iter, normalize=False)
+        max_iter=args.cnet_srv_max_iter, normalize=args.cnet_srv_normalize)
 
 pipeline_step_types = ('slr', 'trf', 'srv')
 cv_params = {k: v for k, v in vars(args).items()
@@ -1977,7 +1981,8 @@ pipe_config = {
         'estimator': SelectFromUnivariateSurvivalModel(
             FastCoxPHSurvivalAnalysis(
                 fit_baseline_model=args.cph_srv_fit_baseline_model,
-                max_iter=args.cph_srv_max_iter, normalize=False),
+                max_iter=args.cph_srv_max_iter,
+                normalize=args.cph_srv_normalize),
             memory=memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
@@ -2017,7 +2022,7 @@ pipe_config = {
     'FastCoxPHSurvivalAnalysis': {
         'estimator': FastCoxPHSurvivalAnalysis(
             fit_baseline_model=args.cph_srv_fit_baseline_model,
-            max_iter=args.cph_srv_max_iter, normalize=False),
+            max_iter=args.cph_srv_max_iter, normalize=args.cph_srv_normalize),
         'param_grid': {
             'alpha': cv_params['cph_srv_a']},
         'param_routing': ['feature_meta']},
