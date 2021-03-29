@@ -12,14 +12,20 @@ dependencies:
   - bioconductor-nanostringdiff
   - bioconductor-ruvseq
   - bioconductor-sva
+  - cvxopt=1.2.6
+  - cvxpy=1.0.31=py38_0
+  - cvxpy-base=1.0.31=py38hf484d3e_0
+  - ecos=2.0.7.post1=py38h2226712_2
   - eli5
   - joblib>=0.14
   - libblas=*=*mkl
   - libopenblas
   - lifelines
   - matplotlib
+  - multiprocess=0.70.8=py38h14c3975_0
   - natsort
   - numpy=1.18
+  - osqp=0.5.0=py38h2226712_2
   - pandas=1.0
   - pillow
   - python=3.8
@@ -35,5 +41,6 @@ dependencies:
   - rpy2=3.1
   - scikit-learn=0.22.2
   - scikit-survival=0.13.1
+  - scs=2.1.1.2=py38h2226712_4
   - seaborn
   - tabulate
