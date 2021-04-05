@@ -925,14 +925,14 @@ def run_model_selection():
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
-            n_jobs=args.n_jobs, param_grid=param_grid,
+            n_jobs=None, param_grid=param_grid,
             param_routing=search_param_routing, refit=scv_refit,
             return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
     elif args.scv_type == 'rand':
         search = ExtendedRandomizedSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
-            n_iter=args.scv_n_iter, n_jobs=args.n_jobs,
+            n_iter=args.scv_n_iter, n_jobs=None,
             param_distributions=param_grid, param_routing=search_param_routing,
             random_state=args.random_seed, refit=scv_refit,
             return_train_score=False, scoring=scv_scoring,
@@ -986,7 +986,7 @@ def run_model_selection():
                 search_fit_params['group_weights'] = group_weights
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             search = add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params)
-        with parallel_backend(args.parallel_backend,
+        with parallel_backend(args.parallel_backend, n_jobs=args.n_jobs,
                               inner_max_num_threads=inner_max_num_threads):
             search.fit(X, y, **search_fit_params)
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
@@ -1185,7 +1185,7 @@ def run_model_selection():
                     pipe_fit_params)
             try:
                 with parallel_backend(
-                        args.parallel_backend,
+                        args.parallel_backend, n_jobs=args.n_jobs,
                         inner_max_num_threads=inner_max_num_threads):
                     search.fit(X.iloc[train_idxs], y[train_idxs],
                                **search_fit_params)
