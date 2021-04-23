@@ -56,8 +56,8 @@ pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
-    ColumnSelector, EdgeRFilterByExpr, ExtendedRFE,
-    NanoStringEndogenousSelector)
+    ColumnSelector, ConfidenceThreshold, EdgeRFilterByExpr, ExtendedRFE,
+    MeanThreshold, MedianThreshold, NanoStringEndogenousSelector)
 from sklearn_extensions.model_selection import (
     ExtendedGridSearchCV, ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
@@ -1550,6 +1550,12 @@ parser.add_argument('--col-slr-file', type=str, nargs='+',
                     help='ColumnSelector feature or metadata columns file')
 parser.add_argument('--col-slr-meta-col', type=str,
                     help='ColumnSelector feature metadata column name')
+parser.add_argument('--cft-slr-thres', type=float, nargs='+',
+                    help='ConfidenceThreshold threshold')
+parser.add_argument('--mnt-slr-thres', type=float, nargs='+',
+                    help='MeanThreshold threshold')
+parser.add_argument('--mdt-slr-thres', type=float, nargs='+',
+                    help='MedianThreshold threshold')
 parser.add_argument('--skb-slr-k', type=int, nargs='+',
                     help='Selector k features')
 parser.add_argument('--skb-slr-k-min', type=int, default=1,
@@ -1875,7 +1881,8 @@ for cv_param, cv_param_values in cv_params.copy().items():
         if cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
             cv_params[cv_param[:-1]] = None
         continue
-    if cv_param in ('col_slr_cols', 'skb_slr_k', 'rfe_srv_step',
+    if cv_param in ('col_slr_cols', 'cft_slr_thres', 'mnt_slr_thres',
+                    'mdt_slr_thres', 'skb_slr_k', 'rfe_srv_step',
                     'cnet_srv_l1r', 'cnet_srv_na', 'fsvm_srv_rr'):
         cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
     elif cv_param in ('rna_slr_mb', 'rna_trf_ft', 'rna_trf_mb', 'nsn_trf_cc',
@@ -1939,6 +1946,19 @@ pipe_config = {
         'param_grid': {
             'cols': cv_params['col_slr_cols']},
         'param_routing': ['feature_meta']},
+    'ConfidenceThreshold': {
+        'estimator': ConfidenceThreshold(meta_col=args.cft_slr_meta_col),
+        'param_grid': {
+            'threshold': cv_params['cft_slr_thres']},
+        'param_routing': ['feature_meta']},
+    'MeanThreshold': {
+        'estimator': MeanThreshold(),
+        'param_grid': {
+            'threshold': cv_params['mnt_slr_thres']}},
+    'MedianThreshold': {
+        'estimator': MedianThreshold(),
+        'param_grid': {
+            'threshold': cv_params['mdt_slr_thres']}},
     'EdgeRFilterByExpr': {
         'estimator': EdgeRFilterByExpr(is_classif=False),
         'param_grid': {
@@ -2086,6 +2106,7 @@ params_fixed_xticks = [
     'slr',
     'slr__cols',
     'slr__model_batch',
+    'slr__threshold',
     'trf',
     'trf__method',
     'trf__model_batch',
