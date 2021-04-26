@@ -65,8 +65,8 @@ from sklearn_extensions.model_selection import (
     ExtendedGridSearchCV, ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import ExtendedPipeline
 from sklearn_extensions.preprocessing import (
-    DESeq2RLEVST, EdgeRTMMLogCPM, LimmaBatchEffectRemover, LogTransformer,
-    NanoStringNormalizer, NanoStringDiffNormalizer)
+    DESeq2RLEVST, EdgeRTMMLogCPM, EdgeRTMMTPM, LimmaBatchEffectRemover,
+    LogTransformer, NanoStringNormalizer, NanoStringDiffNormalizer)
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import (
     SelectFromUnivariateSurvivalModel)
@@ -2020,6 +2020,9 @@ pipe_config = {
     'EdgeRTMMLogCPM': {
         'estimator': EdgeRTMMLogCPM(memory=memory,
                                     prior_count=args.edger_prior_count),
+        'param_routing': ['sample_meta']},
+    'EdgeRTMMTPM': {
+        'estimator': EdgeRTMMTPM(memory=memory),
         'param_routing': ['sample_meta']},
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
