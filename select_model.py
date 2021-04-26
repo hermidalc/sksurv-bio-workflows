@@ -211,9 +211,7 @@ def load_dataset(dataset_file):
     col_trf_columns = []
     if args.col_trf_patterns:
         for pattern in args.col_trf_patterns:
-            col_trf_columns.append(
-                X.columns[X.columns.str.contains(pattern, regex=True)]
-                .to_numpy(dtype=str))
+            col_trf_columns.append(X.columns.str.contains(pattern, regex=True))
     elif args.col_trf_dtypes:
         for dtype in args.col_trf_dtypes:
             if dtype == 'int':
@@ -1858,8 +1856,9 @@ if args.filter_warnings:
                  'sksurv.linear_model.coxph']))
         os.environ['PYTHONWARNINGS'] = ','.join(python_warnings)
 
-joblib_temp_folder_mgr = TemporaryResourcesManager()
 inner_max_num_threads = 1 if args.parallel_backend in ('loky') else None
+if args.max_nbytes is None:
+    joblib_temp_folder_mgr = TemporaryResourcesManager()
 
 # suppress linux conda qt5 wayland warning
 if sys.platform.startswith('linux'):
