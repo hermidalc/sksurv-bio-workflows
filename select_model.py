@@ -2023,7 +2023,7 @@ pipe_config = {
         'param_routing': ['sample_meta']},
     'EdgeRTMMTPM': {
         'estimator': EdgeRTMMTPM(memory=memory),
-        'param_routing': ['sample_meta']},
+        'param_routing': ['feature_meta']},
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
         'param_routing': ['sample_meta']},
