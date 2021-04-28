@@ -203,8 +203,17 @@ def load_dataset(dataset_file):
                     X[new_sample_meta_col] = ohe.transform(
                         sample_meta[[sample_meta_col]])
                     new_feature_names.append(new_sample_meta_col)
-        new_feature_meta = pd.DataFrame('', index=new_feature_names,
-                                        columns=feature_meta.columns)
+        new_feature_meta = pd.DataFrame(index=new_feature_names)
+        for feature_meta_col in feature_meta.columns:
+            if (is_categorical_dtype(feature_meta[feature_meta_col])
+                    or is_object_dtype(feature_meta[feature_meta_col])
+                    or is_string_dtype(feature_meta[feature_meta_col])):
+                new_feature_meta[feature_meta_col] = ''
+            elif (is_integer_dtype(feature_meta[feature_meta_col])
+                  or is_float_dtype(feature_meta[feature_meta_col])):
+                new_feature_meta[feature_meta_col] = 0
+            elif is_bool_dtype(feature_meta[feature_meta_col]):
+                new_feature_meta[feature_meta_col] = False
         new_feature_meta[args.penalty_factor_meta_col] = 0
         feature_meta = feature_meta.append(new_feature_meta,
                                            verify_integrity=True)
@@ -621,8 +630,8 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                 plt.xticks(x_axis)
         elif param_type in params_log_xticks:
             x_axis = np.ravel(param_grid_dict[param])
-            plt.xscale('log', basex=(2 if np.all(np.frexp(x_axis)[0] == 0.5)
-                                     else 10))
+            plt.xscale('log', base=(2 if np.all(np.frexp(x_axis)[0] == 0.5)
+                                    else 10))
         elif param_type in params_fixed_xticks:
             x_axis = range(len(param_grid_dict[param]))
             xtick_labels = [v.split('.')[-1]
