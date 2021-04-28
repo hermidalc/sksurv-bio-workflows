@@ -1207,11 +1207,11 @@ def run_model_selection():
                 if group_weights is not None and pass_cv_group_weights:
                     search_fit_params['group_weights'] = (
                         group_weights[train_idxs])
-            if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
-                search = add_coxnet_alpha_param_grid(
-                    clone(base_search), X.iloc[train_idxs], y[train_idxs],
-                    pipe_fit_params)
             try:
+                if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
+                    search = add_coxnet_alpha_param_grid(
+                        clone(base_search), X.iloc[train_idxs], y[train_idxs],
+                        pipe_fit_params)
                 with parallel_backend(
                         args.parallel_backend, n_jobs=args.n_jobs,
                         inner_max_num_threads=inner_max_num_threads):
