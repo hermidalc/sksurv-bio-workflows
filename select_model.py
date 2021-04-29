@@ -424,9 +424,16 @@ def fit_pipeline(X, y, steps, params=None, param_routing=None,
     pipe.set_params(**params)
     if fit_params is None:
         fit_params = {}
-    pipe.fit(X, y, **fit_params)
+    try:
+        pipe.fit(X, y, **fit_params)
+    except ArithmeticError as e:
+        warnings.formatwarning = warning_format
+        warnings.warn('Estimator fit failed. Details: {}'
+                      .format(format_exception_only(type(e), e)[0]),
+                      category=FitFailedWarning)
+        pipe = None
     if args.scv_verbose == 0:
-        print('.', end='', flush=True)
+        print('.' if pipe is not None else 'x', end='', flush=True)
     return pipe
 
 
@@ -727,6 +734,10 @@ def add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params):
             for cnet_pipe in cnet_pipes)
     if args.scv_verbose == 0:
         print(flush=True)
+    if all(p is None for p in fitted_cnet_pipes):
+        run_cleanup()
+        raise RuntimeError('All CoxnetSurvivalAnalysis alpha path pipelines '
+                           'failed')
     param_grid = []
     cnet_pipes_idx = 0
     cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
@@ -735,8 +746,11 @@ def add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params):
         if (isinstance(pipe[-1], MetaCoxnetSurvivalAnalysis)
                 or (srv_step_name in params and isinstance(
                     params[srv_step_name], MetaCoxnetSurvivalAnalysis))):
-            param_grid[-1][cnet_srv_a_param] = (
-                fitted_cnet_pipes[cnet_pipes_idx][-1].alphas_)
+            if fitted_cnet_pipes[cnet_pipes_idx] is not None:
+                param_grid[-1][cnet_srv_a_param] = (
+                    fitted_cnet_pipes[cnet_pipes_idx][-1].alphas_)
+            else:
+                del param_grid[-1]
             cnet_pipes_idx += 1
     if args.scv_type == 'grid':
         search.set_params(param_grid=param_grid)
@@ -1256,6 +1270,7 @@ def run_model_selection():
                     X.iloc[test_idxs], **pipe_predict_params)
             except Exception as e:
                 if args.scv_error_score == 'raise':
+                    run_cleanup()
                     raise
                 if args.verbose > 0:
                     print('Dataset:', dataset_name, ' Split: {:>{width}d}'
