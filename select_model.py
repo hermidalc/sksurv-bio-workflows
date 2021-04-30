@@ -582,18 +582,27 @@ def add_param_cv_scores(search, param_grid_dict, param_cv_scores=None):
                     std_cv_scores = (search.cv_results_
                                      ['std_test_{}'.format(metric)]
                                      [param_cv_values == param_value])
-                    if param_value_idx < len(param_metric_scores):
+                    if mean_cv_scores.size > 0:
+                        if param_value_idx < len(param_metric_scores):
+                            param_metric_scores[param_value_idx] = np.append(
+                                param_metric_scores[param_value_idx],
+                                mean_cv_scores[np.argmax(mean_cv_scores)])
+                            param_metric_stdev[param_value_idx] = np.append(
+                                param_metric_stdev[param_value_idx],
+                                std_cv_scores[np.argmax(mean_cv_scores)])
+                        else:
+                            param_metric_scores.append(np.array(
+                                [mean_cv_scores[np.argmax(mean_cv_scores)]]))
+                            param_metric_stdev.append(np.array(
+                                [std_cv_scores[np.argmax(mean_cv_scores)]]))
+                    elif param_value_idx < len(param_metric_scores):
                         param_metric_scores[param_value_idx] = np.append(
-                            param_metric_scores[param_value_idx],
-                            mean_cv_scores[np.argmax(mean_cv_scores)])
+                            param_metric_scores[param_value_idx], [np.nan])
                         param_metric_stdev[param_value_idx] = np.append(
-                            param_metric_stdev[param_value_idx],
-                            std_cv_scores[np.argmax(mean_cv_scores)])
+                            param_metric_stdev[param_value_idx], [np.nan])
                     else:
-                        param_metric_scores.append(np.array(
-                            [mean_cv_scores[np.argmax(mean_cv_scores)]]))
-                        param_metric_stdev.append(np.array(
-                            [std_cv_scores[np.argmax(mean_cv_scores)]]))
+                        param_metric_scores.append(np.array([np.nan]))
+                        param_metric_stdev.append(np.array([np.nan]))
             elif args.param_cv_score_meth == 'all':
                 for param_value_idx, param_value in enumerate(param_values):
                     for split_idx in range(search.n_splits_):
@@ -601,12 +610,19 @@ def add_param_cv_scores(search, param_grid_dict, param_cv_scores=None):
                                            ['split{:d}_test_{}'
                                             .format(split_idx, metric)]
                                            [param_cv_values == param_value])
-                        if param_value_idx < len(param_metric_scores):
+                        if split_scores_cv.size > 0:
+                            if param_value_idx < len(param_metric_scores):
+                                param_metric_scores[param_value_idx] = (
+                                    np.append(
+                                        param_metric_scores[param_value_idx],
+                                        split_scores_cv))
+                            else:
+                                param_metric_scores.append(split_scores_cv)
+                        elif param_value_idx < len(param_metric_scores):
                             param_metric_scores[param_value_idx] = np.append(
-                                param_metric_scores[param_value_idx],
-                                split_scores_cv)
+                                param_metric_scores[param_value_idx], [np.nan])
                         else:
-                            param_metric_scores.append(split_scores_cv)
+                            param_metric_scores.append([np.nan])
     return param_cv_scores
 
 
@@ -618,11 +634,13 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
         for metric in args.scv_scoring:
             param_metric_scores = param_cv_scores[param][metric]['scores']
             param_metric_stdev = param_cv_scores[param][metric]['stdev']
-            if any(len(l) > 1 for l in param_metric_scores):
+            if any(len(scores) > 1 for scores in param_metric_scores):
                 mean_cv_scores[metric], std_cv_scores[metric] = [], []
                 for param_value_scores in param_metric_scores:
-                    mean_cv_scores[metric].append(np.mean(param_value_scores))
-                    std_cv_scores[metric].append(np.std(param_value_scores))
+                    mean_cv_scores[metric].append(
+                        np.nanmean(param_value_scores))
+                    std_cv_scores[metric].append(
+                        np.nanstd(param_value_scores))
             else:
                 mean_cv_scores[metric] = np.ravel(param_metric_scores)
                 std_cv_scores[metric] = np.ravel(param_metric_stdev)
@@ -683,7 +701,7 @@ def get_coxnet_max_num_alphas(search):
         param_combos = ParameterSampler(search.param_grid,
                                         n_iter=args.scv_n_iter,
                                         random_state=args.random_seed)
-    max_num_alphas = 100
+    max_num_alphas = 0
     pipe = search.estimator
     srv_step_name = pipe.steps[-1][0]
     cnet_srv_n_param = '{}__estimator__n_alphas'.format(srv_step_name)
@@ -735,7 +753,6 @@ def add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params):
     if args.scv_verbose == 0:
         print(flush=True)
     if all(p is None for p in fitted_cnet_pipes):
-        run_cleanup()
         raise RuntimeError('All CoxnetSurvivalAnalysis alpha path pipelines '
                            'failed')
     param_grid = []
