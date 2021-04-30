@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import atexit
 import os
 import re
 import sys
@@ -104,7 +105,6 @@ def load_dataset(dataset_file):
         os.path.split(dataset_file)[1])
     if not os.path.isfile(dataset_file) or file_extension not in (
             '.Rda', '.rda', '.RData', '.Rdata', '.Rds', '.rds'):
-        run_cleanup()
         raise IOError('File does not exist/invalid: {}'.format(dataset_file))
     if file_extension in ('.Rda', '.rda', '.RData', '.Rdata'):
         r_base.load(dataset_file)
@@ -142,17 +142,14 @@ def load_dataset(dataset_file):
     if args.sample_meta_cols:
         new_feature_names = []
         if args.penalty_factor_meta_col in feature_meta.columns:
-            run_cleanup()
             raise RuntimeError('{} column already exists in feature_meta'
                                .format(args.penalty_factor_meta_col))
         feature_meta[args.penalty_factor_meta_col] = 1
         for sample_meta_col in args.sample_meta_cols:
             if sample_meta_col not in sample_meta.columns:
-                run_cleanup()
                 raise RuntimeError('{} column does not exist in sample_meta'
                                    .format(sample_meta_col))
             if sample_meta_col in X.columns:
-                run_cleanup()
                 raise RuntimeError('{} column already exists in X'
                                    .format(sample_meta_col))
             is_category = (is_categorical_dtype(sample_meta[sample_meta_col])
@@ -164,7 +161,6 @@ def load_dataset(dataset_file):
             elif (args.ordinal_encode_cols is not None
                   and sample_meta_col in args.ordinal_encode_cols):
                 if sample_meta_col not in ordinal_encoder_categories:
-                    run_cleanup()
                     raise RuntimeError('No ordinal encoder categories config '
                                        'exists for {}'.format(sample_meta_col))
                 if sample_meta[sample_meta_col].unique().size > 1:
@@ -265,7 +261,6 @@ def setup_pipe_and_param_grid(cmd_pipe_steps, col_trf_columns=None):
         for step_idx, step_key in enumerate(pipe_step_combo):
             if step_key:
                 if step_key not in pipe_config:
-                    run_cleanup()
                     raise RuntimeError('No pipeline config exists for {}'
                                        .format(step_key))
                 estimator = pipe_config[step_key]['estimator']
@@ -281,12 +276,10 @@ def setup_pipe_and_param_grid(cmd_pipe_steps, col_trf_columns=None):
                 elif hasattr(estimator, 'fit_transform'):
                     step_type = 'trf'
                 else:
-                    run_cleanup()
                     raise RuntimeError('Unsupported estimator type {}'
                                        .format(estimator))
                 if step_idx < len(pipe_steps):
                     if step_type != pipe_step_types[step_idx]:
-                        run_cleanup()
                         raise RuntimeError(
                             'Different step estimator types: {} {}'
                             .format(step_type, pipe_step_types[step_idx]))
@@ -666,7 +659,6 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                             for v in param_grid_dict[param]]
             plt.xticks(x_axis, xtick_labels)
         else:
-            run_cleanup()
             raise RuntimeError('No ticks config exists for {}'
                                .format(param_type))
         plt.xlim([min(x_axis), max(x_axis)])
@@ -1021,7 +1013,6 @@ def run_model_selection():
             print('Sample weights:')
             pprint(sample_weights)
     if args.load_only:
-        run_cleanup()
         sys.exit()
     # train w/ independent test sets
     if args.test_dataset:
@@ -1287,7 +1278,6 @@ def run_model_selection():
                     X.iloc[test_idxs], **pipe_predict_params)
             except Exception as e:
                 if args.scv_error_score == 'raise':
-                    run_cleanup()
                     raise
                 if args.verbose > 0:
                     print('Dataset:', dataset_name, ' Split: {:>{width}d}'
@@ -1483,7 +1473,6 @@ def run_model_selection():
             if metric not in ('score', 'concordance_index_censored',
                               'concordance_index_ipcw',
                               'cumulative_dynamic_auc'):
-                run_cleanup()
                 raise RuntimeError('No feature scores fillna value defined '
                                    'for {}'.format(metric))
             if feature_results is None:
@@ -1911,6 +1900,8 @@ robjects.r('set.seed({:d})'.format(args.random_seed))
 robjects.r('options(\'java.parameters\'="-Xmx{:d}m")'
            .format(args.jvm_heap_size))
 
+atexit.register(run_cleanup)
+
 if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
     memory = Memory(location=cachedir, verbose=0)
@@ -1931,7 +1922,6 @@ cv_params = {k: v for k, v in vars(args).items()
 if cv_params['col_slr_file']:
     for feature_file in cv_params['col_slr_file']:
         if not os.path.isfile(feature_file):
-            run_cleanup()
             raise IOError('File does not exist/invalid: {}'
                           .format(feature_file))
         with open(feature_file) as f:
@@ -2209,4 +2199,3 @@ if args.show_figs or args.save_figs:
                             bbox_inches='tight', format=fig_fmt)
 if args.show_figs:
     plt.show()
-run_cleanup()
