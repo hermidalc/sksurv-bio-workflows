@@ -17,16 +17,16 @@ dependencies:
   - cvxpy-base=1.0.31=py38hf484d3e_0
   - ecos=2.0.7.post1=py38hb38ba16_3
   - eli5
-  - joblib=1.0.1
+  - joblib
   - libblas=*=*mkl
   - libopenblas
   - lifelines
   - matplotlib
   - multiprocess=0.70.11.1=py38h9bf148f_0
   - natsort
-  - numpy=1.18
+  - numpy
   - osqp=0.5.0=py38hb38ba16_3
-  - pandas=1.0
+  - pandas
   - pillow
   - python=3.8
   - r-base=3.6
@@ -37,7 +37,7 @@ dependencies:
   - r-minqa
   - r-mnormt
   - r-nloptr
-  - r-statmod=1.4.35
+  - r-statmod
   - rpy2=3.1
   - scikit-learn=0.22.2
   - scikit-survival=0.13.1
