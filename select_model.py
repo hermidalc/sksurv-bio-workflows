@@ -1790,7 +1790,6 @@ parser.add_argument('--verbose', type=int, default=1,
                     help='program verbosity')
 parser.add_argument('--load-only', default=False, action='store_true',
                     help='set up model selection and load dataset only')
-args = parser.parse_args()
 
 num_col_trfs = 0
 args, argv = parser.parse_known_args()
