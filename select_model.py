@@ -1699,7 +1699,7 @@ parser.add_argument('--fsvm-srv-o', type=str, nargs='+',
                     help='FastSurvivalSVM optimizer')
 parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
                     help='FastSurvivalSVM max_iter')
-parser.add_argument('--edger-prior-count', type=int, default=1,
+parser.add_argument('--edger-prior-count', type=int, default=2,
                     help='edger prior count')
 parser.add_argument('--nano-meta-col', type=str, default='Code.Class',
                     help='NanoString Code Class feature metadata column name')
