@@ -2047,17 +2047,16 @@ pipe_config = {
     'StandardScaler': {
         'estimator': StandardScaler()},
     'DESeq2RLEVST': {
-        'estimator': DESeq2RLEVST(is_classif=False, memory=memory),
+        'estimator': DESeq2RLEVST(is_classif=False),
         'param_grid': {
             'fit_type': cv_params['rna_trf_ft'],
             'model_batch': cv_params['rna_trf_mb']},
         'param_routing': ['sample_meta']},
     'EdgeRTMMLogCPM': {
-        'estimator': EdgeRTMMLogCPM(memory=memory,
-                                    prior_count=args.edger_prior_count),
+        'estimator': EdgeRTMMLogCPM(prior_count=args.edger_prior_count),
         'param_routing': ['sample_meta']},
     'EdgeRTMMTPM': {
-        'estimator': EdgeRTMMTPM(memory=memory),
+        'estimator': EdgeRTMMTPM(),
         'param_routing': ['feature_meta']},
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
