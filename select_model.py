@@ -1537,9 +1537,8 @@ def run_model_selection():
                       fontsize=args.title_font_size - 2)
             plt.suptitle('Permutation Test', fontsize=args.title_font_size)
             # freedman-draconis rule
-            bins = int(np.round(
-                (np.max(perm_scores) - np.min(perm_scores))
-                / (2 * iqr(perm_scores) / np.cbrt(perm_scores.size))))
+            bins = round((np.max(perm_scores) - np.min(perm_scores))
+                         / (2 * iqr(perm_scores) / np.cbrt(perm_scores.size)))
             sns.histplot(perm_scores, bins=bins, kde=True,
                          stat=args.hist_plot_stat, edgecolor='white')
             plt.axvline(mean_score, ls='--', color='darkgrey')
@@ -1552,7 +1551,8 @@ def run_model_selection():
             plt.xlim([-0.01, 1.01])
             plt.xlabel(metric_label[args.scv_refit],
                        fontsize=args.axis_font_size)
-            plt.ylabel('Density', fontsize=args.axis_font_size)
+            plt.ylabel(args.hist_plot_stat.title(),
+                       fontsize=args.axis_font_size)
             plt.tick_params(labelsize=args.axis_font_size)
 
 
@@ -2058,9 +2058,9 @@ for cv_param, cv_param_values in cv_params.copy().items():
         cv_params[cv_param] = np.round(
             np.linspace(cv_params['{}_min'.format(cv_param)],
                         cv_params['{}_max'.format(cv_param)],
-                        int(np.round((cv_params['{}_max'.format(cv_param)]
-                                      - cv_params['{}_min'.format(cv_param)])
-                                     / cv_params['{}_step'.format(cv_param)]))
+                        round((cv_params['{}_max'.format(cv_param)]
+                               - cv_params['{}_min'.format(cv_param)])
+                              / cv_params['{}_step'.format(cv_param)])
                         + 1), decimals=3)
 cnet_srv_min_1lr = 1e-7
 if cv_params['cnet_srv_l1r'] is not None and any(
