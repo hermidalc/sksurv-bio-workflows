@@ -583,7 +583,8 @@ def add_param_cv_scores(search, param_grid_dict, param_cv_scores=None):
 
 def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                           param_cv_scores):
-    cv_metric_colors = sns.color_palette('hls', len(args.scv_scoring))
+    metric_colors = sns.color_palette(args.sns_color_palette,
+                                      len(args.scv_scoring))
     for param in param_cv_scores:
         mean_cv_scores, std_cv_scores = {}, {}
         for metric in args.scv_scoring:
@@ -632,14 +633,14 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
         plt.ylabel('CV Score', fontsize=args.axis_font_size)
         for metric_idx, metric in enumerate(args.scv_scoring):
             plt.plot(x_axis, mean_cv_scores[metric],
-                     color=cv_metric_colors[metric_idx], lw=2, alpha=0.8,
+                     color=metric_colors[metric_idx], lw=2, alpha=0.8,
                      label='Mean {}'.format(metric_label[metric]))
             plt.fill_between(x_axis,
                              [m - s for m, s in zip(mean_cv_scores[metric],
                                                     std_cv_scores[metric])],
                              [m + s for m, s in zip(mean_cv_scores[metric],
                                                     std_cv_scores[metric])],
-                             alpha=0.1, color=cv_metric_colors[metric_idx],
+                             alpha=0.1, color=metric_colors[metric_idx],
                              label=(r'$\pm$ 1 std. dev.'
                                     if metric_idx == len(args.scv_scoring) - 1
                                     else None))
@@ -1122,7 +1123,8 @@ def run_model_selection():
             if args.scv_verbose == 0:
                 print(flush=True)
             test_metric_colors = sns.color_palette(
-                'hls', len(test_datasets) * len(args.scv_scoring))
+                args.sns_color_palette,
+                len(test_datasets) * len(args.scv_scoring))
             for test_idx, test_dataset in enumerate(test_datasets):
                 (test_dataset_name, X_test, y_test, _, _, test_sample_weights,
                  test_sample_meta, test_feature_meta, _) = (
@@ -1753,6 +1755,8 @@ parser.add_argument('--feature-rank-meth', type=str,
                     choices=['num_select_plus1', 'num_total'],
                     default='num_select_plus1',
                     help='feature rank method')
+parser.add_argument('--sns-color-palette', type=str, default='hls',
+                    help='Seaborn/matplotlib color palette')
 parser.add_argument('--title-font-size', type=int, default=14,
                     help='figure title font size')
 parser.add_argument('--axis-font-size', type=int, default=14,
