@@ -33,14 +33,12 @@ import rpy2.robjects as robjects
 import seaborn as sns
 from joblib import Memory, Parallel, delayed, dump, load, parallel_backend
 from joblib._memmapping_reducer import TemporaryResourcesManager
-from matplotlib.offsetbox import AnchoredText
 from natsort import natsorted
 from pandas.api.types import (
     is_bool_dtype, is_categorical_dtype, is_integer_dtype, is_float_dtype,
     is_object_dtype, is_string_dtype)
 from rpy2.robjects import numpy2ri, pandas2ri
 from rpy2.robjects.packages import importr
-from scipy.stats import iqr
 from sklearn.base import BaseEstimator, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning, FitFailedWarning
@@ -66,7 +64,7 @@ from sklearn_extensions.feature_selection import (
     ColumnSelector, ConfidenceThreshold, EdgeRFilterByExpr, ExtendedRFE,
     MeanThreshold, MedianThreshold, NanoStringEndogenousSelector)
 from sklearn_extensions.model_selection import (
-    ExtendedGridSearchCV, ExtendedRandomizedSearchCV, permutation_test_score)
+    ExtendedGridSearchCV, ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import (ExtendedPipeline,
                                          transform_feature_meta)
 from sklearn_extensions.preprocessing import (
@@ -1316,7 +1314,7 @@ def run_model_selection():
                                if risk_scores is not None else
                                split_risk_scores)
             split_results.append(split_result)
-            if args.save_models or args.run_perm_test:
+            if args.save_models:
                 if args.pipe_memory and best_pipe is not None:
                     best_pipe = unset_pipe_memory(best_pipe)
                 split_models.append(best_pipe)
@@ -1334,29 +1332,6 @@ def run_model_selection():
                  .format(args.out_dir, model_name))
             r_base.saveRDS(risk_scores, '{}/{}_risk_scores.rds'
                            .format(args.out_dir, model_name))
-        if args.run_perm_test:
-            search_fit_params = {}
-            if search_param_routing:
-                if 'sample_meta' in search_param_routing['estimator']:
-                    search_fit_params['sample_meta'] = sample_meta
-                if 'feature_meta' in search_param_routing['estimator']:
-                    search_fit_params['feature_meta'] = feature_meta
-                if 'sample_weight' in search_param_routing['estimator']:
-                    search_fit_params['sample_weight'] = sample_weights
-            if groups is not None:
-                search_fit_params['groups'] = groups
-                if group_weights is not None and pass_cv_group_weights:
-                    search_fit_params['group_weights'] = group_weights
-            print('Running permutation test ({:d} permutations x {:d} splits)'
-                  .format(args.n_perms, test_splitter.get_n_splits()))
-            with parallel_backend(args.parallel_backend, n_jobs=args.n_jobs,
-                                  inner_max_num_threads=inner_max_num_threads):
-                mean_score, perm_scores, perm_pvalue = permutation_test_score(
-                        split_models, X, y, scoring=args.scv_refit,
-                        cv=test_splitter, n_permutations=args.n_perms,
-                        n_jobs=None, random_state=args.random_seed,
-                        verbose=args.verbose, fit_params=search_fit_params,
-                        param_routing=search_param_routing)
         if param_grid_dict_alphas is not None:
             param_grid_dict[cnet_srv_a_param] = np.mean(
                 param_grid_dict_alphas, axis=0)
@@ -1395,11 +1370,7 @@ def run_model_selection():
                     np.mean(scores['te']['pr_auc'])), end=' ')
         if num_features and (pipe_props['has_selector']
                              or np.mean(num_features) < X.shape[1]):
-            print(' Mean Features: {:.0f}'.format(np.mean(num_features)),
-                  end=' ')
-        if args.run_perm_test:
-            print(' Permutation Test: Original {} = {:.4f} p = {:.4f}'.format(
-                metric_label[args.scv_refit], mean_score, perm_pvalue))
+            print(' Mean Features: {:.0f}'.format(np.mean(num_features)))
         else:
             print()
         # feature mean rankings and scores
@@ -1529,31 +1500,6 @@ def run_model_selection():
                     floatfmt=feature_results_floatfmt, headers='keys'))
         plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                               param_cv_scores)
-        # plot permutation test histogram
-        if args.run_perm_test:
-            sns.set_palette(sns.color_palette('hls', len(args.scv_scoring)))
-            _, ax = plt.subplots(figsize=(args.fig_width, args.fig_height))
-            plt.title('{}\n{}'.format(dataset_name, pipe_name),
-                      fontsize=args.title_font_size - 2)
-            plt.suptitle('Permutation Test', fontsize=args.title_font_size)
-            # freedman-draconis rule
-            bins = round((np.max(perm_scores) - np.min(perm_scores))
-                         / (2 * iqr(perm_scores) / np.cbrt(perm_scores.size)))
-            sns.histplot(perm_scores, bins=bins, kde=True,
-                         stat=args.hist_plot_stat, edgecolor='white')
-            plt.axvline(mean_score, ls='--', color='darkgrey')
-            ax.add_artist(AnchoredText(
-                r'Original {} = {:.2f}' '\n' r'$\itp = \bf{:.2e}$'
-                .format(metric_label[args.scv_refit], mean_score, perm_pvalue),
-                loc='upper left', frameon=False,
-                prop={'size': args.axis_font_size}))
-            plt.xticks(np.arange(0.0, 1.1, 0.2))
-            plt.xlim([-0.01, 1.01])
-            plt.xlabel(metric_label[args.scv_refit],
-                       fontsize=args.axis_font_size)
-            plt.ylabel(args.hist_plot_stat.title(),
-                       fontsize=args.axis_font_size)
-            plt.tick_params(labelsize=args.axis_font_size)
 
 
 def run_cleanup():
@@ -1853,11 +1799,6 @@ parser.add_argument('--jvm-heap-size', type=int, default=500,
 parser.add_argument('--filter-warnings', type=str, nargs='+',
                     choices=['convergence', 'joblib', 'fitfailed', 'coxnet'],
                     help='filter warnings')
-parser.add_argument('--run-perm-test', default=False,
-                    action='store_true',
-                    help='run permutation test')
-parser.add_argument('--n-perms', type=int, default=1000,
-                    help='permutation test n permutations')
 parser.add_argument('--verbose', type=int, default=1,
                     help='program verbosity')
 parser.add_argument('--load-only', default=False, action='store_true',
