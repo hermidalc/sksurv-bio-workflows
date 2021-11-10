@@ -1753,10 +1753,6 @@ parser.add_argument('--feature-rank-meth', type=str,
                     choices=['num_select_plus1', 'num_total'],
                     default='num_select_plus1',
                     help='feature rank method')
-parser.add_argument_group('--hist-plot-stat', type=str, default='density',
-                          choices=['count', 'frequency', 'probability',
-                                   'percent', 'density'],
-                          help='Histogram plot aggregate statistic')
 parser.add_argument('--title-font-size', type=int, default=14,
                     help='figure title font size')
 parser.add_argument('--axis-font-size', type=int, default=14,
