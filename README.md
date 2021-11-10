@@ -7,7 +7,7 @@ Install and set up [Miniconda3](https://docs.conda.io/en/latest/miniconda.html)
 Clone git repository and submodules:
 
 ```bash
-git clone git@github.com:ruppinlab/sksurv-bio-workflows.git
+git clone git@github.com:hermidalc/sksurv-bio-workflows.git
 cd sksurv-bio-workflows
 git submodule update --init --recursive
 ```
