@@ -1168,11 +1168,11 @@ def run_model_selection():
         param_cv_scores = {}
         param_grid_dict_alphas = None
         risk_scores = None
+        base_search = clone(search)
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
-            base_search = clone(search)
             srv_step_name = pipe.steps[-1][0]
             cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
-            cnet_srv_max_num_alphas = get_coxnet_max_num_alphas(search)
+            cnet_srv_max_num_alphas = get_coxnet_max_num_alphas(base_search)
         for split_idx, (train_idxs, test_idxs) in enumerate(
                 test_splitter.split(X, y, groups, **test_split_params)):
             pipe_fit_params = {}
@@ -1197,6 +1197,8 @@ def run_model_selection():
                     search = add_coxnet_alpha_param_grid(
                         clone(base_search), X.iloc[train_idxs], y[train_idxs],
                         pipe_fit_params)
+                else:
+                    search = clone(base_search)
                 with parallel_backend(
                         args.parallel_backend, n_jobs=args.n_jobs,
                         inner_max_num_threads=inner_max_num_threads):

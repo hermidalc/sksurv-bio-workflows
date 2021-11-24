@@ -1,4 +1,4 @@
-name: sksurv-bio-workflows
+name: sksurv-bio-workflows-r36
 channels:
   - sebp
   - conda-forge
@@ -9,30 +9,29 @@ dependencies:
   - bioconductor-biobase
   - bioconductor-deseq2
   - bioconductor-edger
-  - bioconductor-nanostringdiff
-  - bioconductor-ruvseq
-  - bioconductor-sva
-  - cvxopt=1.2.6
-  - cvxpy=1.0.31
-  - cvxpy-base=1.0.31
-  - ecos=2.0.7.post1
+  # - bioconductor-nanostringdiff
+  # - bioconductor-ruvseq
+  # - bioconductor-sva
+  # - cvxopt=1.2.6
+  # - cvxpy=1.0.31
+  # - cvxpy-base=1.0.31
+  # - ecos=2.0.7.post1
   - eli5
   - joblib
   - libblas=*=*mkl
   - libopenblas
-  - lifelines
+  # - lifelines
   - matplotlib
-  - multiprocess=0.70.11.1
+  # - multiprocess=0.70.11.1
   - natsort
   - numpy
-  - osqp=0.5.0
+  # - osqp=0.5.0
   - pandas
   - pillow
   - python=3.8
   - r-base=3.6
   - r-essentials
   - r-fnn
-  - r-fuzzyranktests
   - r-lme4
   - r-minqa
   - r-mnormt
@@ -42,6 +41,6 @@ dependencies:
   - scikit-learn=0.22.2
   - scikit-survival=0.13.1
   - scipy
-  - scs=2.1.2
+  # - scs=2.1.2
   - seaborn
   - tabulate

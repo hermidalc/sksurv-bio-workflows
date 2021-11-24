@@ -31,7 +31,6 @@ dependencies:
   - r-base=3.6
   - r-essentials
   - r-fnn
-  - r-fuzzyranktests
   - r-lme4
   - r-minqa
   - r-mnormt
