@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import atexit
-import gc
 import os
 import re
 import sys
@@ -462,12 +461,18 @@ def fit_pipeline(X, y, steps, params=None, param_routing=None,
     return pipe
 
 
-def calculate_test_scores(estimator, X_test, y_test, metrics, predict_params,
-                          y_train=None, test_times=None,
-                          test_sample_weights=None):
+def calculate_test_scores(estimator, X_test, y_test, metrics, y_train=None,
+                          test_times=None, predict_params=None,
+                          score_params=None):
     scores = {}
+    if predict_params is None:
+        predict_params = {}
     y_pred = estimator.predict(X_test, **predict_params)
     scores['y_pred'] = y_pred
+    if score_params is None:
+        score_params = {}
+    if isinstance(metrics, str):
+        metrics = [metrics]
     for metric in metrics:
         if metric in ('concordance_index_censored', 'score'):
             scores[metric] = concordance_index_censored(
@@ -667,10 +672,10 @@ def get_coxnet_max_num_alphas(search):
                     params[srv_step_name], MetaCoxnetSurvivalAnalysis))):
             max_num_alphas = max(max_num_alphas,
                                  params[cnet_srv_n_param]
-                                 if cnet_srv_n_param in params else
-                                 params[srv_step_name].estimator.n_alphas
-                                 if srv_step_name in params else
-                                 pipe[-1].estimator.n_alphas)
+                                 if cnet_srv_n_param in params
+                                 else params[srv_step_name].estimator.n_alphas
+                                 if srv_step_name in params
+                                 else pipe[-1].estimator.n_alphas)
     return max_num_alphas
 
 
@@ -795,9 +800,9 @@ def run_model_selection():
                               inplace=True)
     if groups is not None:
         search_param_routing = {'estimator': [], 'scoring': []}
-        search_param_routing['cv'] = ('groups' if group_weights is None else
-                                      {'groups': 'groups',
-                                       'weights': 'group_weights'})
+        search_param_routing['cv'] = ('groups' if group_weights is None
+                                      else {'groups': 'groups',
+                                            'weights': 'group_weights'})
     else:
         search_param_routing = None
     if pipe.param_routing:
@@ -809,6 +814,7 @@ def run_model_selection():
                 search_param_routing['scoring'].append(param)
     scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
     scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
+    test_split_params = {'groups': groups} if groups is not None else {}
     pass_cv_group_weights = False
     if groups is None:
         if args.scv_use_ssplit:
@@ -864,7 +870,6 @@ def run_model_selection():
         cv_splitter = SurvivalStratifiedKFold(
             n_splits=args.scv_splits, random_state=args.random_seed,
             shuffle=True)
-    test_split_params = {}
     if groups is None:
         if args.test_use_ssplit:
             test_splitter = SurvivalStratifiedShuffleSplit(
@@ -887,7 +892,7 @@ def run_model_selection():
             test_splitter = SurvivalStratifiedSampleFromGroupShuffleSplit(
                 n_splits=args.test_splits, test_size=args.test_size,
                 random_state=args.random_seed)
-            test_split_params = {'weights': group_weights}
+            test_split_params['weights'] = group_weights
     elif args.test_repeats > 0:
         if 'sample_weight' in search_param_routing['estimator']:
             test_splitter = RepeatedSurvivalStratifiedGroupKFold(
@@ -897,7 +902,7 @@ def run_model_selection():
             test_splitter = RepeatedSurvivalStratifiedSampleFromGroupKFold(
                 n_splits=args.test_splits, n_repeats=args.test_repeats,
                 random_state=args.random_seed)
-            test_split_params = {'weights': group_weights}
+            test_split_params['weights'] = group_weights
     elif 'sample_weight' in search_param_routing['estimator']:
         test_splitter = SurvivalStratifiedGroupKFold(
             n_splits=args.test_splits, random_state=args.random_seed,
@@ -906,12 +911,12 @@ def run_model_selection():
         test_splitter = SurvivalStratifiedSampleFromGroupKFold(
             n_splits=args.test_splits, random_state=args.random_seed,
             shuffle=True)
-        test_split_params = {'weights': group_weights}
+        test_split_params['weights'] = group_weights
     if args.skb_slr_k_lim:
         min_train_samples = (
-            X.shape[0] if args.test_dataset else
-            min(train.size for train, _ in test_splitter.split(
-                X, y, groups, **test_split_params)))
+            X.shape[0] if args.test_dataset
+            else min(train.size for train, _ in test_splitter.split(
+                X, y, **test_split_params)))
         for params in param_grid:
             for param, param_values in params.items():
                 param_type = get_param_type(param)
@@ -954,14 +959,26 @@ def run_model_selection():
         if groups is not None:
             print('Groups:')
             pprint(groups)
-            if (group_weights is not None and (
-                    test_split_params or pass_cv_group_weights)):
+            if group_weights is not None and pass_cv_group_weights:
                 print('Group weights:')
                 pprint(group_weights)
         if (sample_weights is not None and 'sample_weight' in
                 search_param_routing['estimator']):
             print('Sample weights:')
             pprint(sample_weights)
+    pipe_fit_params = {}
+    if search_param_routing:
+        if 'sample_meta' in search_param_routing['estimator']:
+            pipe_fit_params['sample_meta'] = sample_meta
+        if 'feature_meta' in search_param_routing['estimator']:
+            pipe_fit_params['feature_meta'] = feature_meta
+        if 'sample_weight' in search_param_routing['estimator']:
+            pipe_fit_params['sample_weight'] = sample_weights
+    search_fit_params = pipe_fit_params.copy()
+    if groups is not None:
+        search_fit_params['groups'] = groups
+        if group_weights is not None and pass_cv_group_weights:
+            search_fit_params['group_weights'] = group_weights
     if args.save_model_code is not None:
         if dataset_name.split('_')[-1] == 'eset':
             model_name = '_'.join([dataset_name.rpartition('_')[0],
@@ -974,19 +991,6 @@ def run_model_selection():
         sys.exit()
     # train w/ independent test sets
     if args.test_dataset:
-        pipe_fit_params = {}
-        if search_param_routing:
-            if 'sample_meta' in search_param_routing['estimator']:
-                pipe_fit_params['sample_meta'] = sample_meta
-            if 'feature_meta' in search_param_routing['estimator']:
-                pipe_fit_params['feature_meta'] = feature_meta
-            if 'sample_weight' in search_param_routing['estimator']:
-                pipe_fit_params['sample_weight'] = sample_weights
-        search_fit_params = pipe_fit_params.copy()
-        if groups is not None:
-            search_fit_params['groups'] = groups
-            if group_weights is not None and pass_cv_group_weights:
-                search_fit_params['group_weights'] = group_weights
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             search = add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params)
         with parallel_backend(args.parallel_backend, n_jobs=args.n_jobs,
@@ -1039,9 +1043,10 @@ def run_model_selection():
                 pipe_predict_params['sample_meta'] = test_sample_meta
             if 'feature_meta' in pipe_fit_params:
                 pipe_predict_params['feature_meta'] = test_feature_meta
+            score_params = {'sample_weight': test_sample_weights}
             test_scores = calculate_test_scores(
-                search, X_test, y_test, args.scv_scoring, pipe_predict_params,
-                test_sample_weights=test_sample_weights)
+                search, X_test, y_test, args.scv_scoring,
+                predict_params=pipe_predict_params, score_params=score_params)
             if args.verbose > 0:
                 print('Test:', test_dataset_name, end=' ')
                 for metric in args.scv_scoring:
@@ -1096,8 +1101,7 @@ def run_model_selection():
                         (-penalized_final_feature_meta['Weight'].abs())
                         .argsort()].index:
                     tf_name_sets.append(tf_name_sets[-1] + [feature_name]
-                                        if tf_name_sets
-                                        else [feature_name])
+                                        if tf_name_sets else [feature_name])
                 tf_name_sets = [feature_names + unpenalized_feature_names
                                 for feature_names in tf_name_sets]
                 x_axis = range(1, penalized_final_feature_meta.shape[0] + 1)
@@ -1106,8 +1110,7 @@ def run_model_selection():
                         (-final_feature_meta['Weight'].abs())
                         .argsort()].index:
                     tf_name_sets.append(tf_name_sets[-1] + [feature_name]
-                                        if tf_name_sets
-                                        else [feature_name])
+                                        if tf_name_sets else [feature_name])
                 x_axis = range(1, final_feature_meta.shape[0] + 1)
             ax_slr.set_xlim([min(x_axis), max(x_axis)])
             if len(x_axis) <= 30:
@@ -1135,12 +1138,13 @@ def run_model_selection():
                     pipe_predict_params['sample_meta'] = test_sample_meta
                 if 'feature_meta' in pipe_fit_params:
                     pipe_predict_params['feature_meta'] = test_feature_meta
+                score_params = {'sample_weight': test_sample_weights}
                 tf_test_scores = {}
                 for tf_pipe in tf_pipes:
                     test_scores = calculate_test_scores(
                         tf_pipe, X_test, y_test, args.scv_scoring,
-                        pipe_predict_params,
-                        test_sample_weights=test_sample_weights)
+                        predict_params=pipe_predict_params,
+                        score_params=score_params)
                     for metric in args.scv_scoring:
                         if metric in test_scores:
                             if metric not in tf_test_scores:
@@ -1175,36 +1179,30 @@ def run_model_selection():
             cnet_srv_a_param = '{}__alpha'.format(srv_step_name)
             cnet_srv_max_num_alphas = get_coxnet_max_num_alphas(base_search)
         for split_idx, (train_idxs, test_idxs) in enumerate(
-                test_splitter.split(X, y, groups, **test_split_params)):
-            pipe_fit_params = {}
-            if search_param_routing:
-                if 'sample_meta' in search_param_routing['estimator']:
-                    pipe_fit_params['sample_meta'] = (
-                        sample_meta.iloc[train_idxs])
-                if 'feature_meta' in search_param_routing['estimator']:
-                    pipe_fit_params['feature_meta'] = feature_meta
-                if 'sample_weight' in search_param_routing['estimator']:
-                    pipe_fit_params['sample_weight'] = (
-                        sample_weights[train_idxs]
-                        if sample_weights is not None else None)
-            search_fit_params = pipe_fit_params.copy()
+                test_splitter.split(X, y, **test_split_params)):
+            split_pipe_fit_params = {
+                k: (v.iloc[train_idxs] if k in ('sample_meta')
+                    else v[train_idxs] if k in ('sample_weight')
+                    else v)
+                for k, v in pipe_fit_params.items() if v is not None}
+            split_search_fit_params = split_pipe_fit_params.copy()
             if groups is not None:
-                search_fit_params['groups'] = groups[train_idxs]
+                split_search_fit_params['groups'] = groups[train_idxs]
                 if group_weights is not None and pass_cv_group_weights:
-                    search_fit_params['group_weights'] = (
+                    split_search_fit_params['group_weights'] = (
                         group_weights[train_idxs])
             try:
                 if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
                     search = add_coxnet_alpha_param_grid(
                         clone(base_search), X.iloc[train_idxs], y[train_idxs],
-                        pipe_fit_params)
+                        split_pipe_fit_params)
                 else:
                     search = clone(base_search)
                 with parallel_backend(
                         args.parallel_backend, n_jobs=args.n_jobs,
                         inner_max_num_threads=inner_max_num_threads):
                     search.fit(X.iloc[train_idxs], y[train_idxs],
-                               **search_fit_params)
+                               **split_search_fit_params)
                 if pipe_props['uses_rjava']:
                     best_index = np.argmin(search.cv_results_[
                         'rank_test_{}'.format(args.scv_refit)])
@@ -1216,7 +1214,7 @@ def run_model_selection():
                                 X.iloc[train_idxs], y[train_idxs], pipe.steps,
                                 params=pipe_params,
                                 param_routing=pipe.param_routing,
-                                fit_params=pipe_fit_params,
+                                fit_params=split_pipe_fit_params,
                                 verbose=args.scv_verbose)
                             for pipe_params in [best_params])[0]
                     if args.scv_verbose == 0:
@@ -1229,20 +1227,19 @@ def run_model_selection():
                 for metric in args.scv_scoring:
                     split_scores['cv'][metric] = search.cv_results_[
                         'mean_test_{}'.format(metric)][best_index]
-                test_sample_weights = (sample_weights[test_idxs]
-                                       if sample_weights is not None else None)
-                pipe_predict_params = {}
-                if 'sample_meta' in pipe_fit_params:
-                    pipe_predict_params['sample_meta'] = (
-                        sample_meta.iloc[test_idxs])
-                if 'feature_meta' in pipe_fit_params:
-                    pipe_predict_params['feature_meta'] = feature_meta
+                split_pipe_predict_params = {
+                    k: v.iloc[test_idxs] if k in ('sample_meta') else v
+                    for k, v in pipe_fit_params.items()
+                    if k not in ('sample_weight') and v is not None}
+                split_score_params = {
+                    'sample_weight': (sample_weights[test_idxs]
+                                      if sample_weights is not None else None)}
                 split_scores['te'] = calculate_test_scores(
                     best_pipe, X.iloc[test_idxs], y[test_idxs],
-                    args.scv_scoring, pipe_predict_params,
-                    test_sample_weights=test_sample_weights)
+                    args.scv_scoring, predict_params=split_pipe_predict_params,
+                    score_params=split_score_params)
                 surv_funcs = best_pipe.predict_survival_function(
-                    X.iloc[test_idxs], **pipe_predict_params)
+                    X.iloc[test_idxs], **split_pipe_predict_params)
             except Exception as e:
                 if args.scv_error_score == 'raise':
                     raise
@@ -1256,8 +1253,8 @@ def run_model_selection():
                               'train-test split will be ignored. Details: {}'
                               .format(format_exception_only(type(e), e)[0]),
                               category=FitFailedWarning)
-                split_result = None
                 best_pipe = None
+                split_result = None
             else:
                 if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
                     param_grid_dict = update_coxnet_param_grid_dict(
@@ -1325,10 +1322,6 @@ def run_model_selection():
                 split_models.append(best_pipe)
             if args.pipe_memory:
                 memory.clear(warn=False)
-        gc.collect()
-        if args.save_models:
-            dump(split_models, '{}/{}_split_models.pkl'
-                 .format(args.out_dir, model_name))
         if args.save_results:
             dump(split_results, '{}/{}_split_results.pkl'
                  .format(args.out_dir, model_name))
@@ -1338,6 +1331,9 @@ def run_model_selection():
                  .format(args.out_dir, model_name))
             r_base.saveRDS(risk_scores, '{}/{}_risk_scores.rds'
                            .format(args.out_dir, model_name))
+        if args.save_models:
+            dump(split_models, '{}/{}_split_models.pkl'
+                 .format(args.out_dir, model_name))
         if param_grid_dict_alphas is not None:
             param_grid_dict[cnet_srv_a_param] = np.mean(
                 param_grid_dict_alphas, axis=0)
@@ -1792,6 +1788,8 @@ parser.add_argument('--max-nbytes', type=str, default='1M',
                     help='joblib parallel max_nbytes')
 parser.add_argument('--pipe-memory', default=False, action='store_true',
                     help='turn on pipeline memory')
+parser.add_argument('--gbytes-limit', type=int,
+                    help='joblib memory cache size limit in GB')
 parser.add_argument('--out-dir', type=dir_path, default=os.getcwd(),
                     help='output dir')
 parser.add_argument('--tmp-dir', type=dir_path, default=gettempdir(),
@@ -1830,6 +1828,8 @@ if args.scv_scoring is None:
     args.scv_scoring = [args.scv_refit]
 if args.max_nbytes == 'None':
     args.max_nbytes = None
+if args.gbytes_limit == 'None':
+    args.gbytes_limit = None
 
 if args.parallel_backend != 'multiprocessing':
     python_warnings = ([os.environ['PYTHONWARNINGS']]
@@ -1925,7 +1925,9 @@ atexit.register(run_cleanup)
 
 if args.pipe_memory:
     cachedir = mkdtemp(dir=args.tmp_dir)
-    memory = Memory(location=cachedir, verbose=0)
+    bytes_limit = (args.gbytes_limit * 1024 ** 3
+                   if args.gbytes_limit is not None else None)
+    memory = Memory(location=cachedir, verbose=0, bytes_limit=bytes_limit)
     cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
         memory=memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=args.cnet_srv_fit_baseline_model,
