@@ -1632,6 +1632,8 @@ parser.add_argument('--rna-trf-ft', type=str, nargs='+',
                     help='RNA trf fit type')
 parser.add_argument('--rna-trf-mb', type=str_bool, nargs='+',
                     help='RNA trf model batch')
+parser.add_argument('--rna-trf-pc', type=int, nargs='+',
+                    help='RNA trf prior count')
 parser.add_argument('--nsn-trf-cc', type=str, nargs='+',
                     help='NanoStringNormalizer code_count')
 parser.add_argument('--nsn-trf-bg', type=str, nargs='+',
@@ -1710,8 +1712,6 @@ parser.add_argument('--fsvm-srv-o', type=str, nargs='+',
                     help='FastSurvivalSVM optimizer')
 parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
                     help='FastSurvivalSVM max_iter')
-parser.add_argument('--edger-prior-count', type=int, default=2,
-                    help='edger prior count')
 parser.add_argument('--nano-meta-col', type=str, default='Code.Class',
                     help='NanoString Code Class feature metadata column name')
 parser.add_argument('--scv-type', type=str,
@@ -1960,7 +1960,7 @@ for cv_param, cv_param_values in cv_params.copy().items():
             cv_params[cv_param[:-1]] = None
         continue
     if cv_param in ('col_slr_cols', 'cft_slr_thres', 'mnt_slr_thres',
-                    'mdt_slr_thres', 'skb_slr_k', 'rfe_srv_step',
+                    'mdt_slr_thres', 'skb_slr_k', 'rna_trf_pc', 'rfe_srv_step',
                     'cnet_srv_l1r', 'cnet_srv_na', 'fsvm_srv_rr'):
         cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
     elif cv_param in ('rna_slr_mb', 'rna_trf_ft', 'rna_trf_mb', 'nsn_trf_cc',
@@ -2078,7 +2078,9 @@ pipe_config = {
             'model_batch': cv_params['rna_trf_mb']},
         'param_routing': ['sample_meta']},
     'EdgeRTMMLogCPM': {
-        'estimator': EdgeRTMMLogCPM(prior_count=args.edger_prior_count),
+        'estimator': EdgeRTMMLogCPM(),
+        'param_grid': {
+            'prior_count': cv_params['rna_trf_pc']},
         'param_routing': ['sample_meta']},
     'EdgeRTMMTPM': {
         'estimator': EdgeRTMMTPM(),
@@ -2172,6 +2174,7 @@ pipe_config = {
             'optimizer': cv_params['fsvm_srv_o']}}}
 
 params_lin_xticks = [
+    'trf__prior_count',
     'srv__k',
     'srv__n_features_to_select',
     'srv__step',
