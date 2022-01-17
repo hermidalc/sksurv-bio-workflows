@@ -68,7 +68,7 @@ from sklearn_extensions.model_selection import (
 from sklearn_extensions.pipeline import (ExtendedPipeline,
                                          transform_feature_meta)
 from sklearn_extensions.preprocessing import (
-    DESeq2RLEVST, EdgeRTMMLogCPM, EdgeRTMMTPM, LimmaBatchEffectRemover,
+    DESeq2RLEVST, EdgeRTMMLogCPM, EdgeRTMMLogTPM, LimmaBatchEffectRemover,
     LogTransformer, NanoStringNormalizer, NanoStringDiffNormalizer)
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import (
@@ -2082,8 +2082,10 @@ pipe_config = {
         'param_grid': {
             'prior_count': cv_params['rna_trf_pc']},
         'param_routing': ['sample_meta']},
-    'EdgeRTMMTPM': {
-        'estimator': EdgeRTMMTPM(),
+    'EdgeRTMMLogTPM': {
+        'estimator': EdgeRTMMLogTPM(),
+        'param_grid': {
+            'prior_count': cv_params['rna_trf_pc']},
         'param_routing': ['feature_meta']},
     'LimmaBatchEffectRemover': {
         'estimator': LimmaBatchEffectRemover(preserve_design=False),
