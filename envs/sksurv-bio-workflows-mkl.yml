@@ -1,4 +1,4 @@
-name: sksurv-bio-workflows-r36
+name: sksurv-bio-workflows
 channels:
   - sebp
   - conda-forge
@@ -39,4 +39,3 @@ dependencies:
   - tabulate
   - python-lsp-server
   - r-languageserver
-  - ipython
