@@ -1625,6 +1625,10 @@ parser.add_argument('--ord-trf-categories', type=str_list, nargs='+',
                     help='OrdinalEncoder categories')
 parser.add_argument('--mms-trf-feature-range', type=int_list, default=(0, 1),
                     help='MinMaxScaler feature range')
+parser.add_argument('--log-trf-base', type=int, default=2,
+                    help='LogTransformer base')
+parser.add_argument('--log-trf-sh', type=float, nargs='+',
+                    help='LogTransformer shift')
 parser.add_argument('--pwr-trf-meth', type=str, nargs='+',
                     choices=['box-cox', 'yeo-johnson'],
                     help='PowerTransformer meth')
@@ -1960,8 +1964,9 @@ for cv_param, cv_param_values in cv_params.copy().items():
             cv_params[cv_param[:-1]] = None
         continue
     if cv_param in ('col_slr_cols', 'cft_slr_thres', 'mnt_slr_thres',
-                    'mdt_slr_thres', 'skb_slr_k', 'rna_trf_pc', 'rfe_srv_step',
-                    'cnet_srv_l1r', 'cnet_srv_na', 'fsvm_srv_rr'):
+                    'mdt_slr_thres', 'skb_slr_k', 'log_trf_sh', 'rna_trf_pc',
+                    'rfe_srv_step', 'cnet_srv_l1r', 'cnet_srv_na',
+                    'fsvm_srv_rr'):
         cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
     elif cv_param in ('rna_slr_mb', 'rna_trf_ft', 'rna_trf_mb', 'nsn_trf_cc',
                       'nsn_trf_bg', 'nsn_trf_bg_t', 'nsn_trf_sc',
@@ -2060,7 +2065,9 @@ pipe_config = {
             categories=(args.ord_trf_categories if args.ord_trf_categories else
                         'auto'))},
     'LogTransformer': {
-        'estimator': LogTransformer(base=2, shift=1)},
+        'estimator': LogTransformer(base=args.log_trf_base),
+        'param_grid': {
+            'shift': cv_params['log_trf_sh']}},
     'PowerTransformer': {
         'estimator': PowerTransformer(),
         'param_grid': {
