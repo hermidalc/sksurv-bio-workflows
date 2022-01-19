@@ -68,7 +68,7 @@ from sklearn_extensions.model_selection import (
 from sklearn_extensions.pipeline import (ExtendedPipeline,
                                          transform_feature_meta)
 from sklearn_extensions.preprocessing import (
-    DESeq2RLEVST, EdgeRTMMLogCPM, EdgeRTMMLogTPM, LimmaBatchEffectRemover,
+    DESeq2RLEVST, EdgeRTMMCPM, EdgeRTMMTPM, LimmaBatchEffectRemover,
     LogTransformer, NanoStringNormalizer, NanoStringDiffNormalizer)
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import (
@@ -1716,6 +1716,9 @@ parser.add_argument('--fsvm-srv-o', type=str, nargs='+',
                     help='FastSurvivalSVM optimizer')
 parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
                     help='FastSurvivalSVM max_iter')
+parser.add_argument('--edger-no-log', default=False,
+                    action='store_true',
+                    help='edger no log transform')
 parser.add_argument('--nano-meta-col', type=str, default='Code.Class',
                     help='NanoString Code Class feature metadata column name')
 parser.add_argument('--scv-type', type=str,
@@ -2084,13 +2087,13 @@ pipe_config = {
             'fit_type': cv_params['rna_trf_ft'],
             'model_batch': cv_params['rna_trf_mb']},
         'param_routing': ['sample_meta']},
-    'EdgeRTMMLogCPM': {
-        'estimator': EdgeRTMMLogCPM(),
+    'EdgeRTMMCPM': {
+        'estimator': EdgeRTMMCPM(log=not args.edger_no_log),
         'param_grid': {
             'prior_count': cv_params['rna_trf_pc']},
         'param_routing': ['sample_meta']},
-    'EdgeRTMMLogTPM': {
-        'estimator': EdgeRTMMLogTPM(),
+    'EdgeRTMMTPM': {
+        'estimator': EdgeRTMMTPM(log=not args.edger_no_log),
         'param_grid': {
             'prior_count': cv_params['rna_trf_pc']},
         'param_routing': ['feature_meta']},
@@ -2184,6 +2187,7 @@ pipe_config = {
 
 params_lin_xticks = [
     'trf__prior_count',
+    'trf__shift',
     'srv__k',
     'srv__n_features_to_select',
     'srv__step',
