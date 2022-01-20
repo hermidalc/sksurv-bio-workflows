@@ -706,7 +706,7 @@ def add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params):
           flush=True, end='\n' if args.scv_verbose > 0 else ' ')
     fitted_cnet_pipes = Parallel(
         n_jobs=args.n_jobs, backend=args.parallel_backend,
-        verbose=args.scv_verbose)(
+        max_nbytes=args.max_nbytes, verbose=args.scv_verbose)(
             delayed(fit_pipeline)(X, y, cnet_pipe.steps, params=None,
                                   param_routing=cnet_pipe.param_routing,
                                   fit_params=pipe_fit_params,
@@ -932,17 +932,17 @@ def run_model_selection():
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
-            max_nbytes=args.max_nbytes, n_jobs=None, param_grid=param_grid,
-            param_routing=search_param_routing, refit=scv_refit,
-            return_train_score=False, scoring=scv_scoring,
+            max_nbytes=args.max_nbytes, n_jobs=args.n_jobs,
+            param_grid=param_grid, param_routing=search_param_routing,
+            refit=scv_refit, return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
     elif args.scv_type == 'rand':
         search = ExtendedRandomizedSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
-            max_nbytes=args.max_nbytes, n_iter=args.scv_n_iter, n_jobs=None,
-            param_distributions=param_grid, param_routing=search_param_routing,
-            random_state=args.random_seed, refit=scv_refit,
-            return_train_score=False, scoring=scv_scoring,
+            max_nbytes=args.max_nbytes, n_iter=args.scv_n_iter,
+            n_jobs=args.n_jobs, param_distributions=param_grid,
+            param_routing=search_param_routing, random_state=args.random_seed,
+            refit=scv_refit, return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
     if args.verbose > 0:
         print(search.__repr__(N_CHAR_MAX=10000))
@@ -994,7 +994,7 @@ def run_model_selection():
     if args.test_dataset:
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
             search = add_coxnet_alpha_param_grid(search, X, y, pipe_fit_params)
-        with parallel_backend(args.parallel_backend, n_jobs=args.n_jobs,
+        with parallel_backend(args.parallel_backend,
                               inner_max_num_threads=inner_max_num_threads):
             search.fit(X, y, **search_fit_params)
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
@@ -1118,7 +1118,7 @@ def run_model_selection():
                 ax_slr.set_xticks(x_axis)
             tf_pipes = Parallel(
                 n_jobs=args.n_jobs, backend=args.parallel_backend,
-                verbose=args.scv_verbose)(
+                max_nbytes=args.max_nbytes, verbose=args.scv_verbose)(
                     delayed(fit_pipeline)(X, y, tf_pipe_steps,
                                           params={'slrc__cols': feature_names},
                                           param_routing=tf_pipe_param_routing,
@@ -1200,7 +1200,7 @@ def run_model_selection():
                 else:
                     search = clone(base_search)
                 with parallel_backend(
-                        args.parallel_backend, n_jobs=args.n_jobs,
+                        args.parallel_backend,
                         inner_max_num_threads=inner_max_num_threads):
                     search.fit(X.iloc[train_idxs], y[train_idxs],
                                **split_search_fit_params)
@@ -1210,7 +1210,7 @@ def run_model_selection():
                     best_params = search.cv_results_['params'][best_index]
                     best_pipe = Parallel(
                         n_jobs=args.n_jobs, backend=args.parallel_backend,
-                        verbose=args.scv_verbose)(
+                        max_nbytes=args.max_nbytes, verbose=args.scv_verbose)(
                             delayed(fit_pipeline)(
                                 X.iloc[train_idxs], y[train_idxs], pipe.steps,
                                 params=pipe_params,
