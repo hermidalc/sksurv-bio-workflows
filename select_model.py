@@ -1670,7 +1670,8 @@ parser.add_argument('--cph-srv-n-iter', type=int, default=1000,
                     help='CoxPHSurvivalAnalysis n_iter')
 parser.add_argument('--cph-srv-base-alpha', type=float, default=1e-5,
                     help='CoxPHSurvivalAnalysis base_alpha')
-parser.add_argument('--cph-srv-max-iter', type=int, default=1000000,
+parser.add_argument('--cph-srv-max-iter', type=lambda x: int(float(x)),
+                    default=1e5,
                     help='FastCoxPHSurvivalAnalysis max_iter')
 parser.add_argument('--cph-srv-fit-baseline-model', default=False,
                     action='store_true',
@@ -1689,7 +1690,8 @@ parser.add_argument('--cnet-srv-na', type=int, nargs='+',
                     help='CoxnetSurvivalAnalysis n_alphas')
 parser.add_argument('--cnet-srv-alpha-min-ratio', type=float, default=0.1,
                     help='CoxnetSurvivalAnalysis alpha_min_ratio')
-parser.add_argument('--cnet-srv-max-iter', type=int, default=100000,
+parser.add_argument('--cnet-srv-max-iter', type=lambda x: int(float(x)),
+                    default=1e5,
                     help='CoxnetSurvivalAnalysis max_iter')
 parser.add_argument('--cnet-srv-fit-baseline-model', default=False,
                     action='store_true',
