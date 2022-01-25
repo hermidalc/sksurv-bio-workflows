@@ -1668,10 +1668,12 @@ parser.add_argument('--nsn-trf-sc', type=str, nargs='+',
                     help='NanoStringNormalizer sample_content')
 parser.add_argument('--rfe-srv-step', type=float, nargs='+',
                     help='RFE step')
-parser.add_argument('--rfe-srv-tune-step-at', type=int,
-                    help='RFE tune step at')
 parser.add_argument('--rfe-srv-reducing-step', default=False,
                     action='store_true', help='RFE reducing step')
+parser.add_argument('--rfe-srv-tune-step-at', type=int,
+                    help='RFE tune step at')
+parser.add_argument('--rfe-srv-tuning-step', type=float, default=1,
+                    help='RFE tuning step')
 parser.add_argument('--rfe-srv-verbose', type=int, default=0,
                     help='RFE verbosity')
 parser.add_argument('--cph-srv-am', type=int, default=1,
@@ -2174,7 +2176,8 @@ pipe_config = {
                             random_state=args.random_seed),
             tune_step_at=args.rfe_srv_tune_step_at,
             reducing_step=args.rfe_srv_reducing_step,
-            verbose=args.rfe_srv_verbose, memory=memory),
+            tuning_step=args.rfe_srv_tuning_step, verbose=args.rfe_srv_verbose,
+            memory=memory),
         'param_grid': {
             'estimator__alpha': cv_params['fsvm_srv_a'],
             'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
