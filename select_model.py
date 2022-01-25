@@ -995,7 +995,8 @@ def run_model_selection():
     if args.load_only:
         sys.exit()
     results_dir = '{}/{}'.format(args.out_dir, model_name)
-    rmtree(results_dir)
+    if os.path.exists(results_dir) and os.path.isdir(results_dir):
+        rmtree(results_dir)
     os.makedirs(results_dir, mode=0o755)
     # train w/ independent test sets
     if args.test_dataset:
