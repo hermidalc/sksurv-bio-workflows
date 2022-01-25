@@ -994,6 +994,9 @@ def run_model_selection():
         model_name = dataset_name
     if args.load_only:
         sys.exit()
+    results_dir = '{}/{}'.format(args.out_dir, model_name)
+    rmtree(results_dir)
+    os.makedirs(results_dir, mode=0o755)
     # train w/ independent test sets
     if args.test_dataset:
         if 'CoxnetSurvivalAnalysis' in args.pipe_steps[-1]:
@@ -1168,7 +1171,7 @@ def run_model_selection():
         if args.save_models:
             if args.pipe_memory:
                 best_pipe = unset_pipe_memory(best_pipe)
-            dump(best_pipe, '{}/{}_model.pkl'.format(args.out_dir, model_name))
+            dump(best_pipe, '{}/{}_model.pkl'.format(results_dir, model_name))
     # train-test nested cv
     else:
         if args.verbose > 0:
@@ -1331,16 +1334,16 @@ def run_model_selection():
                 memory.clear(warn=False)
         if args.save_results:
             dump(split_results, '{}/{}_split_results.pkl'
-                 .format(args.out_dir, model_name))
+                 .format(results_dir, model_name))
             dump(param_cv_scores, '{}/{}_param_cv_scores.pkl'
-                 .format(args.out_dir, model_name))
+                 .format(results_dir, model_name))
             dump(risk_scores, '{}/{}_risk_scores.pkl'
-                 .format(args.out_dir, model_name))
+                 .format(results_dir, model_name))
             r_base.saveRDS(risk_scores, '{}/{}_risk_scores.rds'
-                           .format(args.out_dir, model_name))
+                           .format(results_dir, model_name))
         if args.save_models:
             dump(split_models, '{}/{}_split_models.pkl'
-                 .format(args.out_dir, model_name))
+                 .format(results_dir, model_name))
         if param_grid_dict_alphas is not None:
             param_grid_dict[cnet_srv_a_param] = np.mean(
                 param_grid_dict_alphas, axis=0)
@@ -1488,14 +1491,14 @@ def run_model_selection():
                 feature_results_floatfmt.append('.4f')
         if args.save_results:
             dump(feature_results, '{}/{}_feature_results.pkl'
-                 .format(args.out_dir, model_name))
+                 .format(results_dir, model_name))
             r_base.saveRDS(feature_results, '{}/{}_feature_results.rds'
-                           .format(args.out_dir, model_name))
+                           .format(results_dir, model_name))
             if feature_weights is not None:
                 dump(feature_weights, '{}/{}_feature_weights.pkl'
-                     .format(args.out_dir, model_name))
+                     .format(results_dir, model_name))
                 r_base.saveRDS(feature_weights, '{}/{}_feature_weights.rds'
-                               .format(args.out_dir, model_name))
+                               .format(results_dir, model_name))
         if args.verbose > 0:
             print('Overall Feature Ranking:')
             if feature_weights is not None:
@@ -1509,6 +1512,16 @@ def run_model_selection():
                     floatfmt=feature_results_floatfmt, headers='keys'))
         plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict,
                               param_cv_scores)
+    if args.show_figs or args.save_figs:
+        for fig_num in plt.get_fignums():
+            plt.figure(fig_num, constrained_layout=True)
+            if args.save_figs:
+                for fig_fmt in args.fig_format:
+                    plt.savefig('{}/Figure_{:d}.{}'
+                                .format(results_dir, fig_num, fig_fmt),
+                                bbox_inches='tight', format=fig_fmt)
+    if args.show_figs:
+        plt.show()
 
 
 def run_cleanup():
@@ -2244,13 +2257,3 @@ ordinal_encoder_categories = {
     'tumor_stage': ['0', 'i', 'i or ii', 'ii', 'NA', 'iii', 'iv']}
 
 run_model_selection()
-if args.show_figs or args.save_figs:
-    for fig_num in plt.get_fignums():
-        plt.figure(fig_num, constrained_layout=True)
-        if args.save_figs:
-            for fig_fmt in args.fig_format:
-                plt.savefig('{}/Figure_{:d}.{}'.format(args.out_dir, fig_num,
-                                                       fig_fmt),
-                            bbox_inches='tight', format=fig_fmt)
-if args.show_figs:
-    plt.show()
