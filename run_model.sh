@@ -49,6 +49,6 @@ else
     SCRIPT_DIR=$(dirname $(realpath -s $0))
 fi
 
-SELECT_MODEL_CMD="python $SCRIPT_DIR/select_model.py $@"
-echo $SELECT_MODEL_CMD
-$SELECT_MODEL_CMD
+RUN_MODEL_CMD="python $SCRIPT_DIR/run_model.py $@"
+echo $RUN_MODEL_CMD
+$RUN_MODEL_CMD
