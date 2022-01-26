@@ -249,7 +249,7 @@ def load_dataset(dataset_file):
 
 
 def setup_pipe_and_param_grid(cmd_pipe_steps, col_trf_col_grps=None,
-                              col_trf_grp_idx=0, verbose=False):
+                              col_trf_grp_idx=0, memory=None, verbose=False):
     pipe_steps = []
     pipe_param_routing = None
     pipe_step_names = []
@@ -371,7 +371,8 @@ def setup_pipe_and_param_grid(cmd_pipe_steps, col_trf_col_grps=None,
              trf_param_grid_dict, trf_param_grid_estimators) = (
                  setup_pipe_and_param_grid(
                      trf_pipe_steps, col_trf_col_grps=col_trf_col_grps,
-                     col_trf_grp_idx=col_trf_grp_idx + 1, verbose=verbose))
+                     col_trf_grp_idx=col_trf_grp_idx + 1, memory=memory,
+                     verbose=verbose))
             col_trf_pipe_names.append('->'.join(trf_pipe_step_names))
             uniq_trf_name = 'trf{:d}'.format(trf_idx)
             trf_cols = col_trf_col_grps[col_trf_grp_idx][trf_idx]
@@ -441,8 +442,8 @@ def get_param_type(param):
     return param_type
 
 
-def fit_pipeline(X, y, steps, params=None, param_routing=None,
-                 fit_params=None, verbose=0, pipe_verbose=False):
+def fit_pipeline(X, y, steps, params=None, param_routing=None, fit_params=None,
+                 memory=None, verbose=0, pipe_verbose=False):
     pipe = ExtendedPipeline(steps, memory=memory, param_routing=param_routing,
                             verbose=pipe_verbose)
     if params is None:
@@ -779,9 +780,9 @@ def run_model_selection():
     (dataset_name, X, y, groups, group_weights, sample_weights, sample_meta,
      feature_meta, col_trf_col_grps) = load_dataset(args.train_dataset)
     pipe, pipe_step_names, pipe_props, param_grid, param_grid_dict, _ = (
-        setup_pipe_and_param_grid(args.pipe_steps,
-                                  col_trf_col_grps=col_trf_col_grps,
-                                  verbose=args.pipe_verbose))
+        setup_pipe_and_param_grid(
+            args.pipe_steps, col_trf_col_grps=col_trf_col_grps,
+            memory=pipe_memory, verbose=args.pipe_verbose))
     pipe_name = '\n'.join(pipe_step_names)
     if args.sample_meta_cols:
         pipe_has_penalty_factor = False
@@ -1131,6 +1132,7 @@ def run_model_selection():
                                           params={'slrc__cols': feature_names},
                                           param_routing=tf_pipe_param_routing,
                                           fit_params=tf_pipe_fit_params,
+                                          memory=pipe_memory,
                                           verbose=args.scv_verbose,
                                           pipe_verbose=args.pipe_verbose)
                     for feature_names in tf_name_sets)
@@ -1170,7 +1172,7 @@ def run_model_selection():
                 ax_slr.tick_params(labelsize=args.axis_font_size)
                 ax_slr.grid(True, alpha=0.3)
         if args.save_models:
-            if args.pipe_memory:
+            if args.cache:
                 best_pipe = unset_pipe_memory(best_pipe)
             dump(best_pipe, '{}/{}_model.pkl'.format(results_dir, model_name))
     # train-test nested cv
@@ -1225,7 +1227,7 @@ def run_model_selection():
                                 params=pipe_params,
                                 param_routing=pipe.param_routing,
                                 fit_params=split_pipe_fit_params,
-                                verbose=args.scv_verbose,
+                                memory=pipe_memory, verbose=args.scv_verbose,
                                 pipe_verbose=args.pipe_verbose)
                             for pipe_params in [best_params])[0]
                     if args.scv_verbose == 0:
@@ -1328,10 +1330,10 @@ def run_model_selection():
                                split_risk_scores)
             split_results.append(split_result)
             if args.save_models:
-                if args.pipe_memory and best_pipe is not None:
+                if args.cache and best_pipe is not None:
                     best_pipe = unset_pipe_memory(best_pipe)
                 split_models.append(best_pipe)
-            if args.pipe_memory:
+            if args.cache:
                 memory.clear(warn=False)
         if args.save_results:
             dump(split_results, '{}/{}_split_results.pkl'
@@ -1526,7 +1528,7 @@ def run_model_selection():
 
 
 def run_cleanup():
-    if args.pipe_memory:
+    if args.cache:
         rmtree(cachedir)
     if args.parallel_backend == 'loky':
         for rtmp_dir in glob('{}/Rtmp*/'.format(args.tmp_dir)):
@@ -1818,10 +1820,11 @@ parser.add_argument('--parallel-backend', type=str, default='loky',
                     help='joblib parallel backend')
 parser.add_argument('--max-nbytes', type=str, default='1M',
                     help='joblib parallel max_nbytes')
-parser.add_argument('--pipe-memory', default=False, action='store_true',
-                    help='turn on pipeline memory')
+parser.add_argument('--cache', type=str, nargs='+',
+                    choices=['pipeline', 'estimator'],
+                    help='Turn on joblib caching of specific steps')
 parser.add_argument('--gbytes-limit', type=int,
-                    help='joblib memory cache size limit in GB')
+                    help='Joblib cache size limit in GB')
 parser.add_argument('--out-dir', type=dir_path, default=os.getcwd(),
                     help='output dir')
 parser.add_argument('--tmp-dir', type=dir_path, default=gettempdir(),
@@ -1958,17 +1961,24 @@ robjects.r('options(\'java.parameters\'="-Xmx{:d}m")'
 
 atexit.register(run_cleanup)
 
-if args.pipe_memory:
+if args.cache:
     cachedir = mkdtemp(dir=args.tmp_dir)
     bytes_limit = (args.gbytes_limit * 1024 ** 3
                    if args.gbytes_limit is not None else None)
     memory = Memory(location=cachedir, verbose=0, bytes_limit=bytes_limit)
+    pipe_memory = memory if 'pipeline' in args.cache else None
+    estm_memory = memory if 'estimator' in args.cache else None
+else:
+    memory = None
+    pipe_memory = None
+    estm_memory = None
+
+if estm_memory:
     cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
-        memory=memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
+        memory=estm_memory, alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=args.cnet_srv_fit_baseline_model,
         max_iter=args.cnet_srv_max_iter, normalize=args.cnet_srv_normalize)
 else:
-    memory = None
     cnet_srv = ExtendedCoxnetSurvivalAnalysis(
         alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
         fit_baseline_model=args.cnet_srv_fit_baseline_model,
@@ -2144,7 +2154,7 @@ pipe_config = {
             ExtendedCoxPHSurvivalAnalysis(ties=args.cph_srv_ties,
                                           n_iter=args.cph_srv_n_iter,
                                           base_alpha=args.cph_srv_base_alpha),
-            memory=memory),
+            memory=estm_memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']},
@@ -2155,7 +2165,7 @@ pipe_config = {
                 fit_baseline_model=args.cph_srv_fit_baseline_model,
                 max_iter=args.cph_srv_max_iter,
                 normalize=args.cph_srv_normalize),
-            memory=memory),
+            memory=estm_memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['cph_srv_a']},
@@ -2163,7 +2173,8 @@ pipe_config = {
     'SelectFromUnivariateSurvivalModel-FastSurvivalSVM': {
         'estimator': SelectFromUnivariateSurvivalModel(
             FastSurvivalSVM(max_iter=args.fsvm_srv_max_iter,
-                            random_state=args.random_seed), memory=memory),
+                            random_state=args.random_seed),
+            memory=estm_memory),
         'param_grid': {
             'k': cv_params['skb_slr_k'],
             'estimator__alpha': cv_params['fsvm_srv_a'],
@@ -2177,7 +2188,7 @@ pipe_config = {
             tune_step_at=args.rfe_srv_tune_step_at,
             reducing_step=args.rfe_srv_reducing_step,
             tuning_step=args.rfe_srv_tuning_step, verbose=args.rfe_srv_verbose,
-            memory=memory),
+            memory=estm_memory),
         'param_grid': {
             'estimator__alpha': cv_params['fsvm_srv_a'],
             'estimator__rank_ratio': cv_params['fsvm_srv_rr'],
