@@ -818,8 +818,6 @@ def run_model():
             if param not in search_param_routing['estimator']:
                 search_param_routing['estimator'].append(param)
                 search_param_routing['scoring'].append(param)
-    scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
-    scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
     test_split_params = {'groups': groups} if groups is not None else {}
     pass_cv_group_weights = False
     if groups is None:
@@ -918,6 +916,9 @@ def run_model():
             n_splits=args.test_splits, random_state=args.random_seed,
             shuffle=True)
         test_split_params['weights'] = group_weights
+    scv_n_jobs = args.n_jobs if args.scv_use_n_jobs else args.n_jobs - 1
+    scv_scoring = None if args.scv_refit == 'score' else args.scv_scoring
+    scv_refit = bool(args.test_dataset or not pipe_props['uses_rjava'])
     if args.skb_slr_k_lim:
         min_train_samples = (
             X.shape[0] if args.test_dataset
@@ -937,7 +938,7 @@ def run_model():
     if args.scv_type == 'grid':
         search = ExtendedGridSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
-            max_nbytes=args.max_nbytes, n_jobs=args.n_jobs,
+            max_nbytes=args.max_nbytes, n_jobs=scv_n_jobs,
             param_grid=param_grid, param_routing=search_param_routing,
             refit=scv_refit, return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
@@ -945,7 +946,7 @@ def run_model():
         search = ExtendedRandomizedSearchCV(
             pipe, cv=cv_splitter, error_score=args.scv_error_score,
             max_nbytes=args.max_nbytes, n_iter=args.scv_n_iter,
-            n_jobs=args.n_jobs, param_distributions=param_grid,
+            n_jobs=scv_n_jobs, param_distributions=param_grid,
             param_routing=search_param_routing, random_state=args.random_seed,
             refit=scv_refit, return_train_score=False, scoring=scv_scoring,
             verbose=args.scv_verbose)
@@ -1742,8 +1743,7 @@ parser.add_argument('--fsvm-srv-o', type=str, nargs='+',
                     help='FastSurvivalSVM optimizer')
 parser.add_argument('--fsvm-srv-max-iter', type=int, default=20,
                     help='FastSurvivalSVM max_iter')
-parser.add_argument('--edger-no-log', default=False,
-                    action='store_true',
+parser.add_argument('--edger-no-log', default=False, action='store_true',
                     help='edger no log transform')
 parser.add_argument('--nano-meta-col', type=str, default='Code.Class',
                     help='NanoString Code Class feature metadata column name')
@@ -1816,6 +1816,8 @@ parser.add_argument('--save-model-code', type=str,
                     help='save model code')
 parser.add_argument('--n-jobs', type=int, default=-1,
                     help='num parallel jobs')
+parser.add_argument('--scv-use-n-jobs', default=False, action='store_true',
+                    help='SearchCV use n_jobs otherwise n_jobs - 1')
 parser.add_argument('--parallel-backend', type=str, default='loky',
                     help='joblib parallel backend')
 parser.add_argument('--max-nbytes', type=str, default='1M',
@@ -1836,8 +1838,7 @@ parser.add_argument('--jvm-heap-size', type=int, default=500,
 parser.add_argument('--filter-warnings', type=str, nargs='+',
                     choices=['convergence', 'joblib', 'fitfailed', 'coxnet'],
                     help='filter warnings')
-parser.add_argument('--pipe-verbose', default=False,
-                    action='store_true',
+parser.add_argument('--pipe-verbose', default=False, action='store_true',
                     help='Pipeline verbose (for debugging)')
 parser.add_argument('--verbose', type=int, default=1,
                     help='program verbosity')
