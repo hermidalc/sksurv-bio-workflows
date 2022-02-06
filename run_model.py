@@ -61,8 +61,9 @@ pandas2ri.activate()
 
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
-    ColumnSelector, ConfidenceThreshold, EdgeRFilterByExpr, ExtendedRFE,
-    MeanThreshold, MedianThreshold, NanoStringEndogenousSelector)
+    ColumnSelector, ConfidenceThreshold, CorrelationThreshold,
+    EdgeRFilterByExpr, ExtendedRFE, MeanThreshold, MedianThreshold,
+    NanoStringEndogenousSelector)
 from sklearn_extensions.model_selection import (
     ExtendedGridSearchCV, ExtendedRandomizedSearchCV)
 from sklearn_extensions.pipeline import (ExtendedPipeline,
@@ -1624,6 +1625,11 @@ parser.add_argument('--cft-slr-thres', type=float, nargs='+',
 parser.add_argument('--cft-slr-meta-col', type=str,
                     default='Confidence Score',
                     help='ConfidenceThreshold feature metadata column name')
+parser.add_argument('--crt-slr-thres', type=float, nargs='+',
+                    help='CorrelationThreshold threshold')
+parser.add_argument('--crt-slr-meta-col', type=str,
+                    default='Correlation Score',
+                    help='CorrelationThreshold feature metadata column name')
 parser.add_argument('--mnt-slr-thres', type=float, nargs='+',
                     help='MeanThreshold threshold')
 parser.add_argument('--mdt-slr-thres', type=float, nargs='+',
@@ -2006,10 +2012,10 @@ for cv_param, cv_param_values in cv_params.copy().items():
         if cv_param in ('cph_srv_ae', 'fsvm_srv_ae'):
             cv_params[cv_param[:-1]] = None
         continue
-    if cv_param in ('col_slr_cols', 'cft_slr_thres', 'mnt_slr_thres',
-                    'mdt_slr_thres', 'skb_slr_k', 'log_trf_shift',
-                    'rna_trf_pc', 'rfe_srv_step', 'cnet_srv_l1r',
-                    'cnet_srv_na', 'fsvm_srv_rr'):
+    if cv_param in ('col_slr_cols', 'cft_slr_thres', 'crt_slr_thres',
+                    'mnt_slr_thres', 'mdt_slr_thres', 'skb_slr_k',
+                    'log_trf_shift', 'rna_trf_pc', 'rfe_srv_step',
+                    'cnet_srv_l1r', 'cnet_srv_na', 'fsvm_srv_rr'):
         cv_params[cv_param] = np.sort(cv_param_values, kind='mergesort')
     elif cv_param in ('rna_slr_mb', 'rna_trf_ft', 'rna_trf_mb', 'nsn_trf_cc',
                       'nsn_trf_bg', 'nsn_trf_bg_t', 'nsn_trf_sc',
@@ -2076,6 +2082,11 @@ pipe_config = {
         'estimator': ConfidenceThreshold(meta_col=args.cft_slr_meta_col),
         'param_grid': {
             'threshold': cv_params['cft_slr_thres']},
+        'param_routing': ['feature_meta']},
+    'CorrelationThreshold': {
+        'estimator': CorrelationThreshold(meta_col=args.crt_slr_meta_col),
+        'param_grid': {
+            'threshold': cv_params['crt_slr_thres']},
         'param_routing': ['feature_meta']},
     'MeanThreshold': {
         'estimator': MeanThreshold(),
