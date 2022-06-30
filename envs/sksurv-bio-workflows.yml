@@ -21,8 +21,8 @@ dependencies:
   - numpy
   - pandas
   - pillow
-  - python=3.8
-  - r-base=3.6
+  - python
+  - r-base
   - r-essentials
   - r-fnn
   - r-lme4
@@ -30,9 +30,9 @@ dependencies:
   - r-mnormt
   - r-nloptr
   - r-statmod
-  - rpy2=3.1
-  - scikit-learn=0.22.2
-  - scikit-survival=0.13.1
+  - rpy2
+  - scikit-learn
+  - scikit-survival
   - scipy
   - seaborn
   - tabulate
