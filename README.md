@@ -7,7 +7,7 @@ Install and set up [Mambaforge](https://github.com/conda-forge/miniforge#mambafo
 Clone git repository and submodules:
 
 ```bash
-git clone --recurse-submodules git@github.com:hermidalc/sksurv-bio-workflows.git
+git clone --recurse-submodules https://github.com/hermidalc/sksurv-bio-workflows.git
 cd sksurv-bio-workflows
 ```
 
