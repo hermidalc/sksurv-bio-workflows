@@ -1,6 +1,5 @@
 name: sksurv-bio-workflows
 channels:
-  - sebp
   - conda-forge
   - bioconda
 dependencies:

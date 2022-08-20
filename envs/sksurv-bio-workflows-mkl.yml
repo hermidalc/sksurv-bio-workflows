@@ -1,6 +1,5 @@
 name: sksurv-bio-workflows
 channels:
-  - sebp
   - conda-forge
   - bioconda
 dependencies:
@@ -14,7 +13,7 @@ dependencies:
   - bioconductor-sva
   - eli5
   - joblib
-  - libblas=*=*mkl
+  - libblas=*[build=*mkl]
   - libopenblas
   - lifelines
   - matplotlib
