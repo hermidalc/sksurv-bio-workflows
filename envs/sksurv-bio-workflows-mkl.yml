@@ -1,4 +1,4 @@
-name: sksurv-bio-workflows-r43
+name: sksurv-bio-workflows
 channels:
   - conda-forge
   - bioconda
