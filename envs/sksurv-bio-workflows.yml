@@ -18,7 +18,7 @@ dependencies:
   - matplotlib
   - natsort
   - numpy
-  - pandas
+  - pandas=1.5
   - pillow
   - python=3.10
   - r-base=4.1
