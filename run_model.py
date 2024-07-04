@@ -17,6 +17,9 @@ from traceback import format_exception_only
 from uuid import uuid4
 
 warnings.filterwarnings(
+    "ignore", category=FutureWarning, module="sklearn.utils.metaestimators"
+)
+warnings.filterwarnings(
     "ignore", category=FutureWarning, module="sklearn.utils.deprecation"
 )
 warnings.filterwarnings(
@@ -451,9 +454,11 @@ def setup_pipe_and_param_grid(
             param_grid_estimators[param] = param_values
             param_grid_dict[param] = sorted(
                 [
-                    ".".join([type(v).__module__, type(v).__qualname__])
-                    if isinstance(v, BaseEstimator)
-                    else v
+                    (
+                        ".".join([type(v).__module__, type(v).__qualname__])
+                        if isinstance(v, BaseEstimator)
+                        else v
+                    )
                     for v in param_values
                 ],
                 key=lambda x: (x is None, x),
@@ -691,9 +696,11 @@ def add_param_cv_scores(search, param_grid_dict, param_cv_scores=None):
         if any(isinstance(v, BaseEstimator) for v in param_cv_values):
             param_cv_values = np.array(
                 [
-                    ".".join([type(v).__module__, type(v).__qualname__])
-                    if isinstance(v, BaseEstimator)
-                    else v
+                    (
+                        ".".join([type(v).__module__, type(v).__qualname__])
+                        if isinstance(v, BaseEstimator)
+                        else v
+                    )
                     for v in param_cv_values
                 ]
             )
@@ -792,11 +799,13 @@ def plot_param_cv_metrics(dataset_name, pipe_name, param_grid_dict, param_cv_sco
         elif param_type in params_fixed_xticks:
             x_axis = range(len(param_grid_dict[param]))
             xtick_labels = [
-                v.split(".")[-1]
-                if param_type in pipeline_step_types
-                and not args.long_label_names
-                and v is not None
-                else str(v)
+                (
+                    v.split(".")[-1]
+                    if param_type in pipeline_step_types
+                    and not args.long_label_names
+                    and v is not None
+                    else str(v)
+                )
                 for v in param_grid_dict[param]
             ]
             plt.xticks(x_axis, xtick_labels)
@@ -856,11 +865,15 @@ def get_coxnet_max_num_alphas(search):
         ):
             max_num_alphas = max(
                 max_num_alphas,
-                params[cnet_srv_n_param]
-                if cnet_srv_n_param in params
-                else params[srv_step_name].estimator.n_alphas
-                if srv_step_name in params
-                else pipe[-1].estimator.n_alphas,
+                (
+                    params[cnet_srv_n_param]
+                    if cnet_srv_n_param in params
+                    else (
+                        params[srv_step_name].estimator.n_alphas
+                        if srv_step_name in params
+                        else pipe[-1].estimator.n_alphas
+                    )
+                ),
             )
     return max_num_alphas
 
@@ -1545,9 +1558,7 @@ def run_model():
                 k: (
                     v.iloc[train_idxs]
                     if k in ("sample_meta")
-                    else v[train_idxs]
-                    if k in ("sample_weight")
-                    else v
+                    else v[train_idxs] if k in ("sample_weight") else v
                 )
                 for k, v in pipe_fit_params.items()
                 if v is not None
