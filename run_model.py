@@ -675,11 +675,7 @@ def get_final_feature_meta(pipe, feature_meta):
             hasattr(final_estimator, "estimator_")
             and isinstance(final_estimator.estimator_, CoxnetSurvivalAnalysis)
         ):
-            feature_weights = np.ravel(
-                feature_weights[0]
-                if isinstance(feature_weights, tuple)
-                else feature_weights
-            )
+            feature_weights = np.ravel(feature_weights)
         feature_mask = feature_weights != 0
         if args.penalty_factor_meta_col in feature_meta.columns:
             feature_mask[feature_meta[args.penalty_factor_meta_col] == 0] = True
