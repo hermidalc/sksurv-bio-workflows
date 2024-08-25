@@ -92,7 +92,7 @@ from sklearn_extensions.model_selection import (
 )
 from sklearn_extensions.pipeline import ExtendedPipeline, transform_feature_meta
 from sklearn_extensions.preprocessing import (
-    DESeq2RLEVST,
+    DESeq2NormVST,
     EdgeRTMMCPM,
     EdgeRTMMTPM,
     LimmaBatchEffectRemover,
@@ -2223,7 +2223,7 @@ if __name__ == "__main__":
         help="Selector k sample limit",
     )
     parser.add_argument(
-        "--rna-slr-mb", type=str_bool, nargs="+", help="RNA slr model batch"
+        "--rna-slr-mb", type=str_bool, nargs="+", help="RNA-seq slr model batch"
     )
     parser.add_argument(
         "--ohe-trf-categories",
@@ -2259,12 +2259,17 @@ if __name__ == "__main__":
         choices=["box-cox", "yeo-johnson"],
         help="PowerTransformer meth",
     )
-    parser.add_argument("--rna-trf-ft", type=str, nargs="+", help="RNA trf fit type")
     parser.add_argument(
-        "--rna-trf-mb", type=str_bool, nargs="+", help="RNA trf model batch"
+        "--rna-trf-nt", type=str, nargs="+", help="RNA-seq trf norm type"
     )
     parser.add_argument(
-        "--rna-trf-pc", type=float, nargs="+", help="RNA trf prior count"
+        "--rna-trf-ft", type=str, nargs="+", help="RNA-seq trf fit type"
+    )
+    parser.add_argument(
+        "--rna-trf-mb", type=str_bool, nargs="+", help="RNA-seq trf model batch"
+    )
+    parser.add_argument(
+        "--rna-trf-pc", type=float, nargs="+", help="RNA-seq trf prior count"
     )
     parser.add_argument(
         "--nsn-trf-cc", type=str, nargs="+", help="NanoStringNormalizer code_count"
@@ -2393,13 +2398,13 @@ if __name__ == "__main__":
         "--fsvm-srv-ae-max", type=int, help="FastSurvivalSVM alpha exp max"
     )
     parser.add_argument(
-        "--fsvm-srv-rr", type=float, nargs="+", help="FastSurvivalSVM rank_ratio"
+        "--fsvm-srv-rr", type=float, nargs="+", help="FastSurvivalSVM rank ratio"
     )
     parser.add_argument(
-        "--fsvm-srv-rr-min", type=float, help="FastSurvivalSVM rank_ratio min"
+        "--fsvm-srv-rr-min", type=float, help="FastSurvivalSVM rank ratio min"
     )
     parser.add_argument(
-        "--fsvm-srv-rr-max", type=float, help="FastSurvivalSVM rank_ratio max"
+        "--fsvm-srv-rr-max", type=float, help="FastSurvivalSVM rank ratio max"
     )
     parser.add_argument(
         "--fsvm-srv-rr-step",
@@ -2415,7 +2420,22 @@ if __name__ == "__main__":
         help="FastSurvivalSVM optimizer",
     )
     parser.add_argument(
-        "--fsvm-srv-max-iter", type=int, default=20, help="FastSurvivalSVM max_iter"
+        "--fsvm-srv-max-iter", type=int, default=20, help="FastSurvivalSVM max iter"
+    )
+    parser.add_argument(
+        "--edger-min-count", type=int, nargs="+", help="EdgeRFilterByExpr min count"
+    )
+    parser.add_argument(
+        "--edger-min-total-count",
+        type=int,
+        nargs="+",
+        help="EdgeRFilterByExpr min total count",
+    )
+    parser.add_argument(
+        "--edger-large-n", type=int, nargs="+", help="EdgeRFilterByExpr large n"
+    )
+    parser.add_argument(
+        "--edger-min-prop", type=int, nargs="+", help="EdgeRFilterByExpr min prop"
     )
     parser.add_argument(
         "--edger-no-log",
@@ -2845,6 +2865,7 @@ if __name__ == "__main__":
             cv_params[cv_param] = np.sort(cv_param_values, kind="mergesort")
         elif cv_param in (
             "rna_slr_mb",
+            "rna_trf_nt",
             "rna_trf_ft",
             "rna_trf_mb",
             "nsn_trf_cc",
@@ -2960,7 +2981,13 @@ if __name__ == "__main__":
             "param_grid": {"threshold": cv_params["mdt_slr_thres"]},
         },
         "EdgeRFilterByExpr": {
-            "estimator": EdgeRFilterByExpr(is_classif=False),
+            "estimator": EdgeRFilterByExpr(
+                min_count=args.edger_min_count,
+                min_total_count=args.edger_min_total_count,
+                large_n=args.edger_large_n,
+                min_prop=args.edger_min_prop,
+                is_classif=False,
+            ),
             "param_grid": {"model_batch": cv_params["rna_slr_mb"]},
             "param_routing": ["sample_meta"],
         },
@@ -3000,9 +3027,10 @@ if __name__ == "__main__":
         },
         "RobustScaler": {"estimator": RobustScaler()},
         "StandardScaler": {"estimator": StandardScaler()},
-        "DESeq2RLEVST": {
-            "estimator": DESeq2RLEVST(is_classif=False, memory=estm_memory),
+        "DESeq2NormVST": {
+            "estimator": DESeq2NormVST(is_classif=False, memory=estm_memory),
             "param_grid": {
+                "norm_type": cv_params["rna_trf_nt"],
                 "fit_type": cv_params["rna_trf_ft"],
                 "model_batch": cv_params["rna_trf_mb"],
             },

@@ -8,6 +8,7 @@ dependencies:
   - bioconductor-biobase
   - bioconductor-deseq2
   - bioconductor-edger
+  - bioconductor-genefilter
   - bioconductor-nanostringdiff
   - bioconductor-ruvseq
   - bioconductor-sva
