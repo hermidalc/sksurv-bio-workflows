@@ -19,9 +19,6 @@ fi
 export PYTHONUNBUFFERED=1
 
 python_warnings=(
-    'ignore::FutureWarning:sklearn.utils.deprecation'
-    'ignore::FutureWarning:sklearn.utils.metaestimators'
-    'ignore::FutureWarning:rpy2.robjects.pandas2ri'
     'ignore:Optimization did not converge:UserWarning'
     'ignore:Optimization terminated early:UserWarning'
     'ignore:Persisting input arguments took:UserWarning'
@@ -42,7 +39,7 @@ source $CONDA_BASE/etc/profile.d/conda.sh
 while [[ -v CONDA_DEFAULT_ENV ]]; do
     conda deactivate
 done
-conda activate sksurv-bio-workflows
+conda activate sksurv-bio-workflows-r43
 
 if [[ -v SLURM_SUBMIT_DIR ]]; then
     SCRIPT_DIR="$SLURM_SUBMIT_DIR"

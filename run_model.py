@@ -16,16 +16,6 @@ from tempfile import mkdtemp, gettempdir
 from traceback import format_exception_only
 from uuid import uuid4
 
-warnings.filterwarnings(
-    "ignore", category=FutureWarning, module="sklearn.utils.deprecation"
-)
-warnings.filterwarnings(
-    "ignore", category=FutureWarning, module="sklearn.utils.metaestimators"
-)
-warnings.filterwarnings(
-    "ignore", category=FutureWarning, module="rpy2.robjects.pandas2ri"
-)
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -33,7 +23,7 @@ import rpy2.rinterface_lib.embedded as r_embedded
 
 r_embedded.set_initoptions(("rpy2", "--quiet", "--no-save", "--max-ppsize=500000"))
 
-import rpy2.robjects as robjects
+import rpy2.robjects as ro
 import seaborn as sns
 from joblib import Memory, Parallel, delayed, dump, load, parallel_backend
 from joblib._memmapping_reducer import TemporaryResourcesManager
@@ -72,19 +62,18 @@ from sksurv.svm import FastSurvivalSVM
 from sksurv.util import Surv
 from tabulate import tabulate
 
-numpy2ri.activate()
-pandas2ri.activate()
-
 from sklearn_extensions.compose import ExtendedColumnTransformer
 from sklearn_extensions.feature_selection import (
     ColumnSelector,
     ConfidenceThreshold,
     CorrelationThreshold,
+    CountThreshold,
     EdgeRFilterByExpr,
     ExtendedRFE,
     MeanThreshold,
     MedianThreshold,
     NanoStringEndogenousSelector,
+    VarianceThreshold,
 )
 from sklearn_extensions.model_selection import (
     ExtendedGridSearchCV,
@@ -151,15 +140,16 @@ def load_dataset(dataset_file):
         raise IOError("File does not exist/invalid: {}".format(dataset_file))
     if file_extension in (".Rda", ".rda", ".RData", ".Rdata"):
         r_base.load(dataset_file)
-        eset = robjects.globalenv[dataset_name]
+        eset = ro.globalenv[dataset_name]
     else:
         eset = r_base.readRDS(dataset_file)
-    X = pd.DataFrame(
-        r_base.t(r_biobase.exprs(eset)),
-        columns=r_biobase.featureNames(eset),
-        index=r_biobase.sampleNames(eset),
-    )
-    sample_meta = r_biobase.pData(eset)
+    with (ro.default_converter + numpy2ri.converter + pandas2ri.converter).context():
+        X = pd.DataFrame(
+            r_base.t(r_biobase.exprs(eset)),
+            columns=r_biobase.featureNames(eset),
+            index=r_biobase.sampleNames(eset),
+        )
+        sample_meta = r_biobase.pData(eset)
     y = Surv.from_dataframe(
         args.sample_meta_stat_col, args.sample_meta_surv_col, sample_meta
     )
@@ -181,7 +171,8 @@ def load_dataset(dataset_file):
         group_weights = None
         sample_weights = None
     try:
-        feature_meta = r_biobase.fData(eset)
+        with (ro.default_converter + pandas2ri.converter).context():
+            feature_meta = r_biobase.fData(eset)
         feature_meta_category_cols = feature_meta.select_dtypes(
             include="category"
         ).columns
@@ -189,7 +180,8 @@ def load_dataset(dataset_file):
             feature_meta_category_cols
         ].astype(str)
     except ValueError:
-        feature_meta = pd.DataFrame(index=r_biobase.featureNames(eset))
+        with (ro.default_converter + pandas2ri.converter).context():
+            feature_meta = pd.DataFrame(index=r_biobase.featureNames(eset))
     if args.sample_meta_cols:
         new_feature_names = []
         if args.penalty_factor_meta_col in feature_meta.columns:
@@ -1779,9 +1771,10 @@ def run_model():
                 "{}/{}_param_cv_scores.pkl".format(results_dir, model_name),
             )
             dump(risk_scores, "{}/{}_risk_scores.pkl".format(results_dir, model_name))
-            r_base.saveRDS(
-                risk_scores, "{}/{}_risk_scores.rds".format(results_dir, model_name)
-            )
+            with (ro.default_converter + pandas2ri.converter).context():
+                r_base.saveRDS(
+                    risk_scores, "{}/{}_risk_scores.rds".format(results_dir, model_name)
+                )
         if args.save_models:
             dump(split_models, "{}/{}_split_models.pkl".format(results_dir, model_name))
         if param_grid_dict_alphas is not None:
@@ -1970,19 +1963,21 @@ def run_model():
                 feature_results,
                 "{}/{}_feature_results.pkl".format(results_dir, model_name),
             )
-            r_base.saveRDS(
-                feature_results,
-                "{}/{}_feature_results.rds".format(results_dir, model_name),
-            )
+            with (ro.default_converter + pandas2ri.converter).context():
+                r_base.saveRDS(
+                    feature_results,
+                    "{}/{}_feature_results.rds".format(results_dir, model_name),
+                )
             if feature_weights is not None:
                 dump(
                     feature_weights,
                     "{}/{}_feature_weights.pkl".format(results_dir, model_name),
                 )
-                r_base.saveRDS(
-                    feature_weights,
-                    "{}/{}_feature_weights.rds".format(results_dir, model_name),
-                )
+                with (ro.default_converter + pandas2ri.converter).context():
+                    r_base.saveRDS(
+                        feature_weights,
+                        "{}/{}_feature_weights.rds".format(results_dir, model_name),
+                    )
         if args.verbose > 0:
             print("Overall Feature Ranking:")
             if feature_weights is not None:
@@ -2208,6 +2203,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mdt-slr-thres", type=float, nargs="+", help="MedianThreshold threshold"
     )
+    parser.add_argument(
+        "--vrt-slr-thres", type=float, nargs="+", help="VarianceThreshold threshold"
+    )
+    parser.add_argument(
+        "--cnt-slr-mcnt", type=int, nargs="+", help="CountThreshold min count"
+    )
+    parser.add_argument(
+        "--cnt-slr-msmp", type=int, nargs="+", help="CountThreshold min samples"
+    )
     parser.add_argument("--skb-slr-k", type=int, nargs="+", help="Selector k features")
     parser.add_argument(
         "--skb-slr-k-min", type=int, default=1, help="Selector k min features"
@@ -2267,9 +2271,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--rna-trf-mb", type=str_bool, nargs="+", help="RNA-seq trf model batch"
-    )
-    parser.add_argument(
-        "--rna-trf-pc", type=float, nargs="+", help="RNA-seq trf prior count"
     )
     parser.add_argument(
         "--nsn-trf-cc", type=str, nargs="+", help="NanoStringNormalizer code_count"
@@ -2423,26 +2424,20 @@ if __name__ == "__main__":
         "--fsvm-srv-max-iter", type=int, default=20, help="FastSurvivalSVM max iter"
     )
     parser.add_argument(
-        "--edger-min-count", type=int, nargs="+", help="EdgeRFilterByExpr min count"
+        "--edger-min-count", type=int, help="EdgeRFilterByExpr min count"
     )
     parser.add_argument(
-        "--edger-min-total-count",
-        type=int,
-        nargs="+",
-        help="EdgeRFilterByExpr min total count",
+        "--edger-min-total-count", type=int, help="EdgeRFilterByExpr min total count"
     )
-    parser.add_argument(
-        "--edger-large-n", type=int, nargs="+", help="EdgeRFilterByExpr large n"
-    )
-    parser.add_argument(
-        "--edger-min-prop", type=int, nargs="+", help="EdgeRFilterByExpr min prop"
-    )
+    parser.add_argument("--edger-large-n", type=int, help="EdgeRFilterByExpr large n")
+    parser.add_argument("--edger-min-prop", type=int, help="EdgeRFilterByExpr min prop")
     parser.add_argument(
         "--edger-no-log",
         default=False,
         action="store_true",
-        help="edger no log transform",
+        help="EdgeR no log transform",
     )
+    parser.add_argument("--edger-prior-count", type=float, help="edger prior count")
     parser.add_argument(
         "--nano-meta-col",
         type=str,
@@ -2650,15 +2645,6 @@ if __name__ == "__main__":
         python_warnings = (
             [os.environ["PYTHONWARNINGS"]] if "PYTHONWARNINGS" in os.environ else []
         )
-        python_warnings.append(
-            ":".join(["ignore", "", "FutureWarning", "sklearn.utils.deprecation"])
-        )
-        python_warnings.append(
-            ":".join(["ignore", "", "FutureWarning", "sklearn.utils.metaestimators"])
-        )
-        python_warnings.append(
-            ":".join(["ignore", "", "FutureWarning", "rpy2.robjects.pandas2ri"])
-        )
         os.environ["PYTHONWARNINGS"] = ",".join(python_warnings)
     if args.filter_warnings:
         if args.parallel_backend == "multiprocessing":
@@ -2790,11 +2776,12 @@ if __name__ == "__main__":
     # suppress linux conda qt5 wayland warning
     if sys.platform.startswith("linux"):
         os.environ["XDG_SESSION_TYPE"] = "x11"
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
 
     r_base = importr("base")
     r_biobase = importr("Biobase")
-    robjects.r("set.seed({:d})".format(args.random_seed))
-    robjects.r("options('java.parameters'=\"-Xmx{:d}m\")".format(args.jvm_heap_size))
+    ro.r("set.seed({:d})".format(args.random_seed))
+    ro.r("options('java.parameters'=\"-Xmx{:d}m\")".format(args.jvm_heap_size))
 
     atexit.register(run_cleanup)
 
@@ -2854,9 +2841,11 @@ if __name__ == "__main__":
             "crt_slr_thres",
             "mnt_slr_thres",
             "mdt_slr_thres",
+            "vrt_slr_thres",
+            "cnt_slr_mcnt",
+            "cnt_slr_msmp",
             "skb_slr_k",
             "log_trf_shift",
-            "rna_trf_pc",
             "rfe_srv_step",
             "cnet_srv_l1r",
             "cnet_srv_na",
@@ -2980,6 +2969,17 @@ if __name__ == "__main__":
             "estimator": MedianThreshold(),
             "param_grid": {"threshold": cv_params["mdt_slr_thres"]},
         },
+        "VarianceThreshold": {
+            "estimator": VarianceThreshold(),
+            "param_grid": {"threshold": cv_params["vrt_slr_thres"]},
+        },
+        "CountThreshold": {
+            "estimator": CountThreshold(),
+            "param_grid": {
+                "min_count": cv_params["cnt_slr_mcnt"],
+                "min_samples": cv_params["cnt_slr_msmp"],
+            },
+        },
         "EdgeRFilterByExpr": {
             "estimator": EdgeRFilterByExpr(
                 min_count=args.edger_min_count,
@@ -3037,13 +3037,19 @@ if __name__ == "__main__":
             "param_routing": ["sample_meta"],
         },
         "EdgeRTMMCPM": {
-            "estimator": EdgeRTMMCPM(log=not args.edger_no_log, memory=estm_memory),
-            "param_grid": {"prior_count": cv_params["rna_trf_pc"]},
+            "estimator": EdgeRTMMCPM(
+                log=not args.edger_no_log,
+                prior_count=args.edger_prior_count,
+                memory=estm_memory,
+            ),
             "param_routing": ["sample_meta"],
         },
         "EdgeRTMMTPM": {
-            "estimator": EdgeRTMMTPM(log=not args.edger_no_log, memory=estm_memory),
-            "param_grid": {"prior_count": cv_params["rna_trf_pc"]},
+            "estimator": EdgeRTMMTPM(
+                log=not args.edger_no_log,
+                prior_count=args.edger_prior_count,
+                memory=estm_memory,
+            ),
             "param_routing": ["feature_meta"],
         },
         "LimmaBatchEffectRemover": {
