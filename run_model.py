@@ -3188,7 +3188,11 @@ if __name__ == "__main__":
         "srv__estimator__rank_ratio",
     ]
 
-    params_log_xticks = ["srv__alpha", "srv__alphas", "srv__estimator__alpha"]
+    params_log_xticks = [
+        "srv__alpha",
+        "srv__alphas",
+        "srv__estimator__alpha",
+    ]
 
     params_fixed_xticks = [
         "slr",
@@ -3196,6 +3200,7 @@ if __name__ == "__main__":
         "slr__model_batch",
         "slr__threshold",
         "trf",
+        "trf__fit_type",
         "trf__method",
         "trf__model_batch",
         "trf__code_count",
@@ -3220,7 +3225,7 @@ if __name__ == "__main__":
     }
 
     ordinal_encoder_categories = {
-        "tumor_stage": ["0", "i", "i or ii", "ii", None, "iii", "iv"]
+        "tumor_stage": ["i", "ii", "iii", "iv"],
     }
 
     run_model()
