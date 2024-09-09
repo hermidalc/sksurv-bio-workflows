@@ -2682,7 +2682,18 @@ if __name__ == "__main__":
                 warnings.filterwarnings(
                     "ignore",
                     category=RuntimeWarning,
+                    message="^divide by zero encountered in divide",
+                    module="sksurv.linear_model.coxph",
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=RuntimeWarning,
                     message="^invalid value encountered in true_divide",
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=RuntimeWarning,
+                    message="^invalid value encountered in divide",
                 )
                 warnings.filterwarnings(
                     "ignore",
@@ -2742,7 +2753,26 @@ if __name__ == "__main__":
                     ":".join(
                         [
                             "ignore",
+                            "divide by zero encountered in divide",
+                            "RuntimeWarning",
+                            "sksurv.linear_model.coxph",
+                        ]
+                    )
+                )
+                python_warnings.append(
+                    ":".join(
+                        [
+                            "ignore",
                             "invalid value encountered in true_divide",
+                            "RuntimeWarning",
+                        ]
+                    )
+                )
+                python_warnings.append(
+                    ":".join(
+                        [
+                            "ignore",
+                            "invalid value encountered in divide",
                             "RuntimeWarning",
                         ]
                     )

@@ -25,7 +25,9 @@ python_warnings=(
     'ignore:Estimator fit failed:RuntimeWarning'
     'ignore:all coefficients are zero:UserWarning:sksurv_extensions.linear_model._coxnet'
     'ignore:divide by zero encountered in true_divide:RuntimeWarning:sksurv.linear_model.coxph'
+    'ignore:divide by zero encountered in divide:RuntimeWarning:sksurv.linear_model.coxph'
     'ignore:invalid value encountered in true_divide:RuntimeWarning'
+    'ignore:invalid value encountered in divide:RuntimeWarning'
     'ignore:overflow encountered in exp:RuntimeWarning:sksurv.linear_model.coxph'
     'ignore:overflow encountered in power:RuntimeWarning:sksurv.linear_model.coxph'
 )
