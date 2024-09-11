@@ -2367,8 +2367,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--cnet-srv-alpha-min-ratio",
-        type=float,
-        default=0.1,
+        type=str,
+        default="auto",
         help="CoxnetSurvivalAnalysis alpha_min_ratio",
     )
     parser.add_argument(
@@ -2849,14 +2849,22 @@ if __name__ == "__main__":
     if estm_memory:
         cnet_srv = CachedExtendedCoxnetSurvivalAnalysis(
             memory=estm_memory,
-            alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
+            alpha_min_ratio=(
+                args.cnet_srv_alpha_min_ratio
+                if args.cnet_srv_alpha_min_ratio == "auto"
+                else float(args.cnet_srv_alpha_min_ratio)
+            ),
             fit_baseline_model=args.cnet_srv_fit_baseline_model,
             max_iter=args.cnet_srv_max_iter,
             normalize=args.cnet_srv_normalize,
         )
     else:
         cnet_srv = ExtendedCoxnetSurvivalAnalysis(
-            alpha_min_ratio=args.cnet_srv_alpha_min_ratio,
+            alpha_min_ratio=(
+                args.cnet_srv_alpha_min_ratio
+                if args.cnet_srv_alpha_min_ratio == "auto"
+                else float(args.cnet_srv_alpha_min_ratio)
+            ),
             fit_baseline_model=args.cnet_srv_fit_baseline_model,
             max_iter=args.cnet_srv_max_iter,
             normalize=args.cnet_srv_normalize,
