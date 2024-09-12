@@ -26,6 +26,7 @@ r_embedded.set_initoptions(("rpy2", "--quiet", "--no-save", "--max-ppsize=500000
 import rpy2.robjects as ro
 import seaborn as sns
 from joblib import Memory, Parallel, delayed, dump, load, parallel_backend
+from joblib.memory import JobLibCollisionWarning
 from joblib._memmapping_reducer import TemporaryResourcesManager
 from natsort import natsorted
 from pandas.api.types import (
@@ -2662,6 +2663,12 @@ if __name__ == "__main__":
                     category=UserWarning,
                     message="^Persisting input arguments took",
                 )
+                # filter joblib #1060 issue
+                warnings.filterwarnings(
+                    "ignore",
+                    category=JobLibCollisionWarning,
+                    message="^Possible name collisions between functions",
+                )
             if any(w in args.filter_warnings for w in ("fitfailed", "coxnet")):
                 warnings.filterwarnings(
                     "ignore",
@@ -2730,6 +2737,15 @@ if __name__ == "__main__":
                 python_warnings.append(
                     ":".join(
                         ["ignore", "Persisting input arguments took", "UserWarning"]
+                    )
+                )
+                python_warnings.append(
+                    ":".join(
+                        [
+                            "ignore",
+                            "Possible name collisions between functions",
+                            "UserWarning",
+                        ]
                     )
                 )
             if any(w in args.filter_warnings for w in ("fitfailed", "coxnet")):

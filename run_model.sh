@@ -23,6 +23,7 @@ python_warnings=(
     'ignore:Optimization terminated early:UserWarning'
     'ignore:Persisting input arguments took:UserWarning'
     'ignore:Estimator fit failed:RuntimeWarning'
+    'ignore:Possible name collisions between functions:UserWarning'
     'ignore:Some fits failed:RuntimeWarning:sklearn_extensions.model_selection._validation'
     'ignore:all coefficients are zero:UserWarning:sksurv_extensions.linear_model._coxnet'
     'ignore:divide by zero encountered in true_divide:RuntimeWarning:sksurv.linear_model.coxph'
