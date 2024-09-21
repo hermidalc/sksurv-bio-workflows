@@ -2288,18 +2288,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--nsn-trf-sc", type=str, nargs="+", help="NanoStringNormalizer sample_content"
     )
-    parser.add_argument("--rfe-srv-step", type=float, nargs="+", help="RFE step")
+    parser.add_argument("--rfe-slr-step", type=float, nargs="+", help="RFE step")
     parser.add_argument(
-        "--rfe-srv-reducing-step",
+        "--rfe-slr-reducing-step",
         default=False,
         action="store_true",
         help="RFE reducing step",
     )
-    parser.add_argument("--rfe-srv-tune-step-at", type=int, help="RFE tune step at")
+    parser.add_argument("--rfe-slr-tune-step-at", type=int, help="RFE tune step at")
     parser.add_argument(
-        "--rfe-srv-tuning-step", type=float, default=1, help="RFE tuning step"
+        "--rfe-slr-tuning-step", type=float, default=1, help="RFE tuning step"
     )
-    parser.add_argument("--rfe-srv-verbose", type=int, default=0, help="RFE verbosity")
+    parser.add_argument("--rfe-slr-verbose", type=int, default=0, help="RFE verbosity")
     parser.add_argument(
         "--cph-srv-am", type=int, default=1, help="CoxPHSurvivalAnalysis alpha mantissa"
     )
@@ -2918,7 +2918,7 @@ if __name__ == "__main__":
             "cnt_slr_msmp",
             "skb_slr_k",
             "log_trf_shift",
-            "rfe_srv_step",
+            "rfe_slr_step",
             "cnet_srv_l1r",
             "cnet_srv_na",
             "fsvm_srv_rr",
@@ -3193,17 +3193,17 @@ if __name__ == "__main__":
                 FastSurvivalSVM(
                     max_iter=args.fsvm_srv_max_iter, random_state=args.random_seed
                 ),
-                tune_step_at=args.rfe_srv_tune_step_at,
-                reducing_step=args.rfe_srv_reducing_step,
-                tuning_step=args.rfe_srv_tuning_step,
-                verbose=args.rfe_srv_verbose,
+                tune_step_at=args.rfe_slr_tune_step_at,
+                reducing_step=args.rfe_slr_reducing_step,
+                tuning_step=args.rfe_slr_tuning_step,
+                verbose=args.rfe_slr_verbose,
                 memory=estm_memory,
             ),
             "param_grid": {
                 "estimator__alpha": cv_params["fsvm_srv_a"],
                 "estimator__rank_ratio": cv_params["fsvm_srv_rr"],
                 "estimator__optimizer": cv_params["fsvm_srv_o"],
-                "step": cv_params["rfe_srv_step"],
+                "step": cv_params["rfe_slr_step"],
                 "n_features_to_select": cv_params["skb_slr_k"],
             },
             "param_routing": ["feature_meta"],
