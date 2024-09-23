@@ -24,6 +24,7 @@ python_warnings=(
     'ignore:Persisting input arguments took:UserWarning'
     'ignore:Estimator fit failed:RuntimeWarning'
     'ignore:Possible name collisions between functions:UserWarning'
+    'ignore:A worker stopped while some jobs were given to the executor:UserWarning'
     'ignore:Some fits failed:RuntimeWarning:sklearn_extensions.model_selection._validation'
     'ignore:all coefficients are zero:UserWarning:sksurv_extensions.linear_model._coxnet'
     'ignore:divide by zero encountered in true_divide:RuntimeWarning:sksurv.linear_model.coxph'
@@ -43,7 +44,7 @@ source $CONDA_BASE/etc/profile.d/conda.sh
 while [[ -v CONDA_DEFAULT_ENV ]]; do
     conda deactivate
 done
-conda activate sksurv-bio-workflows
+conda activate sksurv-bio-workflows-r43
 
 if [[ -v SLURM_SUBMIT_DIR ]]; then
     SCRIPT_DIR="$SLURM_SUBMIT_DIR"

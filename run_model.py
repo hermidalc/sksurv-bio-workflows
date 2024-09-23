@@ -2670,6 +2670,12 @@ if __name__ == "__main__":
                     category=JobLibCollisionWarning,
                     message="^Possible name collisions between functions",
                 )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=UserWarning,
+                    message="^A worker stopped while some jobs were given to the executor",
+                    module="joblib.externals.loky.process_executor",
+                )
             if any(w in args.filter_warnings for w in ("fitfailed", "coxnet")):
                 warnings.filterwarnings(
                     "ignore",
@@ -2745,6 +2751,15 @@ if __name__ == "__main__":
                         [
                             "ignore",
                             "Possible name collisions between functions",
+                            "UserWarning",
+                        ]
+                    )
+                )
+                python_warnings.append(
+                    ":".join(
+                        [
+                            "ignore",
+                            "A worker stopped while some jobs were given to the executor",
                             "UserWarning",
                         ]
                     )
