@@ -13,6 +13,7 @@ dependencies:
   - bioconductor-nanostringdiff
   - bioconductor-ruvseq
   - bioconductor-sva
+  - bioconductor-wrench
   - eli5
   - joblib
   - libopenblas
