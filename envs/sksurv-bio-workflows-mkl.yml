@@ -28,6 +28,7 @@ dependencies:
   - python=3.10
   - r-base=4.3
   - r-essentials
+  - r-fastglm
   - r-fnn
   - r-lme4
   - r-minqa
