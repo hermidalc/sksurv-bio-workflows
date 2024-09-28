@@ -89,6 +89,7 @@ from sklearn_extensions.preprocessing import (
     LogTransformer,
     NanoStringNormalizer,
     NanoStringDiffNormalizer,
+    WrenchCPM,
 )
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import SelectFromUnivariateSurvivalModel
@@ -2437,9 +2438,38 @@ if __name__ == "__main__":
         "--edger-no-log",
         default=False,
         action="store_true",
-        help="EdgeR no log transform",
+        help="edgeR no log transform",
     )
-    parser.add_argument("--edger-prior-count", type=float, help="edger prior count")
+    parser.add_argument(
+        "--edger-prior-count", type=float, default=2, help="edgeR prior count"
+    )
+    parser.add_argument(
+        "--wrench-est-type",
+        type=str,
+        default="w.marg.mean",
+        help="Wrench estimator type",
+    )
+    parser.add_argument(
+        "--wrench-ref-type",
+        type=str,
+        default="sw.means",
+        help="Wrench reference vector type",
+    )
+    parser.add_argument(
+        "--wrench-no-log",
+        default=False,
+        action="store_true",
+        help="Wrench no log transform",
+    )
+    parser.add_argument(
+        "--wrench-prior-count", type=float, default=1, help="Wrench prior count"
+    )
+    parser.add_argument(
+        "--limma-no-log",
+        default=False,
+        action="store_true",
+        help="limma no log transform",
+    )
     parser.add_argument(
         "--nano-meta-col",
         type=str,
