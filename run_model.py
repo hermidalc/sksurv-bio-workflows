@@ -82,14 +82,13 @@ from sklearn_extensions.model_selection import (
 )
 from sklearn_extensions.pipeline import ExtendedPipeline, transform_feature_meta
 from sklearn_extensions.preprocessing import (
-    DESeq2NormVST,
-    EdgeRTMMCPM,
-    EdgeRTMMTPM,
+    DESeq2Normalizer,
+    EdgeRNormalizer,
     LimmaBatchEffectRemover,
     LogTransformer,
     NanoStringNormalizer,
     NanoStringDiffNormalizer,
-    WrenchCPM,
+    WrenchNormalizer,
 )
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import SelectFromUnivariateSurvivalModel
@@ -2273,6 +2272,13 @@ if __name__ == "__main__":
         "--rna-trf-ft", type=str, nargs="+", help="RNA-seq trf fit type"
     )
     parser.add_argument(
+        "--rna-trf-tt",
+        type=str,
+        nargs="+",
+        choices=["cpm", "rlog", "tpm", "vst"],
+        help="RNA-seq trf trans type",
+    )
+    parser.add_argument(
         "--rna-trf-mb", type=str_bool, nargs="+", help="RNA-seq trf model batch"
     )
     parser.add_argument(
@@ -2454,6 +2460,12 @@ if __name__ == "__main__":
         type=str,
         default="sw.means",
         help="Wrench reference vector type",
+    )
+    parser.add_argument(
+        "--wrench-z-adj",
+        default=False,
+        action="store_true",
+        help="Wrench z adj",
     )
     parser.add_argument(
         "--wrench-no-log",
@@ -2974,6 +2986,7 @@ if __name__ == "__main__":
             "rna_slr_mb",
             "rna_trf_nt",
             "rna_trf_ft",
+            "rna_trf_tt",
             "rna_trf_mb",
             "nsn_trf_cc",
             "nsn_trf_bg",
@@ -3145,30 +3158,41 @@ if __name__ == "__main__":
         },
         "RobustScaler": {"estimator": RobustScaler()},
         "StandardScaler": {"estimator": StandardScaler()},
-        "DESeq2NormVST": {
-            "estimator": DESeq2NormVST(is_classif=False, memory=estm_memory),
+        "DESeq2Normalizer": {
+            "estimator": DESeq2Normalizer(memory=estm_memory),
             "param_grid": {
                 "norm_type": cv_params["rna_trf_nt"],
                 "fit_type": cv_params["rna_trf_ft"],
+                "trans_type": cv_params["rna_trf_tt"],
                 "model_batch": cv_params["rna_trf_mb"],
             },
             "param_routing": ["sample_meta"],
         },
-        "EdgeRTMMCPM": {
-            "estimator": EdgeRTMMCPM(
+        "EdgeRNormalizer": {
+            "estimator": EdgeRNormalizer(
                 log=not args.edger_no_log,
                 prior_count=args.edger_prior_count,
                 memory=estm_memory,
             ),
+            "param_grid": {
+                "norm_type": cv_params["rna_trf_nt"],
+                "trans_type": cv_params["rna_trf_tt"],
+            },
             "param_routing": ["sample_meta"],
         },
-        "EdgeRTMMTPM": {
-            "estimator": EdgeRTMMTPM(
-                log=not args.edger_no_log,
-                prior_count=args.edger_prior_count,
+        "WrenchNormalizer": {
+            "estimator": WrenchNormalizer(
+                est_type=args.wrench_est_type,
+                ref_type=args.wrench_ref_type,
+                z_adj=args.wrench_z_adj,
+                log=not args.wrench_no_log,
+                prior_count=args.wrench_prior_count,
                 memory=estm_memory,
             ),
-            "param_routing": ["feature_meta"],
+            "param_grid": {
+                "trans_type": cv_params["rna_trf_tt"],
+            },
+            "param_routing": ["sample_meta"],
         },
         "LimmaBatchEffectRemover": {
             "estimator": LimmaBatchEffectRemover(preserve_design=False),
@@ -3319,6 +3343,8 @@ if __name__ == "__main__":
         "slr__threshold",
         "trf",
         "trf__fit_type",
+        "trf__norm_type",
+        "trf__trans_type",
         "trf__method",
         "trf__model_batch",
         "trf__code_count",
