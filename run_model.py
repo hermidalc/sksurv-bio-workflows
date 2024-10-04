@@ -83,12 +83,13 @@ from sklearn_extensions.model_selection import (
 from sklearn_extensions.pipeline import ExtendedPipeline, transform_feature_meta
 from sklearn_extensions.preprocessing import (
     DESeq2Normalizer,
+    DESeq2WrenchNormalizer,
     EdgeRNormalizer,
+    EdgeRWrenchNormalizer,
     LimmaBatchEffectRemover,
     LogTransformer,
     NanoStringNormalizer,
     NanoStringDiffNormalizer,
-    WrenchNormalizer,
 )
 from sklearn_extensions.utils import _determine_key_type
 from sksurv_extensions.feature_selection import SelectFromUnivariateSurvivalModel
@@ -2200,6 +2201,12 @@ if __name__ == "__main__":
         help="CorrelationThreshold feature metadata column name",
     )
     parser.add_argument(
+        "--ctr-min-count", type=int, default=1, help="CountThreshold min count"
+    )
+    parser.add_argument(
+        "--ctr-min-samples", type=int, default=1, help="CountThreshold min samples"
+    )
+    parser.add_argument(
         "--mnt-slr-thres", type=float, nargs="+", help="MeanThreshold threshold"
     )
     parser.add_argument(
@@ -2207,12 +2214,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--vrt-slr-thres", type=float, nargs="+", help="VarianceThreshold threshold"
-    )
-    parser.add_argument(
-        "--cnt-slr-mcnt", type=int, nargs="+", help="CountThreshold min count"
-    )
-    parser.add_argument(
-        "--cnt-slr-msmp", type=int, nargs="+", help="CountThreshold min samples"
     )
     parser.add_argument("--skb-slr-k", type=int, nargs="+", help="Selector k features")
     parser.add_argument(
@@ -2227,9 +2228,6 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
         help="Selector k sample limit",
-    )
-    parser.add_argument(
-        "--rna-slr-mb", type=str_bool, nargs="+", help="RNA-seq slr model batch"
     )
     parser.add_argument(
         "--ohe-trf-categories",
@@ -2264,22 +2262,6 @@ if __name__ == "__main__":
         nargs="+",
         choices=["box-cox", "yeo-johnson"],
         help="PowerTransformer meth",
-    )
-    parser.add_argument(
-        "--rna-trf-nt", type=str, nargs="+", help="RNA-seq trf norm type"
-    )
-    parser.add_argument(
-        "--rna-trf-ft", type=str, nargs="+", help="RNA-seq trf fit type"
-    )
-    parser.add_argument(
-        "--rna-trf-tt",
-        type=str,
-        nargs="+",
-        choices=["cpm", "rlog", "tpm", "vst"],
-        help="RNA-seq trf trans type",
-    )
-    parser.add_argument(
-        "--rna-trf-mb", type=str_bool, nargs="+", help="RNA-seq trf model batch"
     )
     parser.add_argument(
         "--nsn-trf-cc", type=str, nargs="+", help="NanoStringNormalizer code_count"
@@ -2433,6 +2415,21 @@ if __name__ == "__main__":
         "--fsvm-srv-max-iter", type=int, default=20, help="FastSurvivalSVM max iter"
     )
     parser.add_argument(
+        "--deseq2-norm-type", type=str, default="ratio", help="DESeq2 norm type"
+    )
+    parser.add_argument(
+        "--deseq2-fit-type", type=str, default="parametric", help="DESeq2 fit type"
+    )
+    parser.add_argument(
+        "--deseq2-trans-type", type=str, default="vst", help="DESeq2 trans type"
+    )
+    parser.add_argument(
+        "--deseq2-model-batch",
+        default=False,
+        action="store_true",
+        help="DESeq2 model batch",
+    )
+    parser.add_argument(
         "--edger-min-count", type=int, help="EdgeRFilterByExpr min count"
     )
     parser.add_argument(
@@ -2440,6 +2437,18 @@ if __name__ == "__main__":
     )
     parser.add_argument("--edger-large-n", type=int, help="EdgeRFilterByExpr large n")
     parser.add_argument("--edger-min-prop", type=int, help="EdgeRFilterByExpr min prop")
+    parser.add_argument(
+        "--edger-norm-type", type=str, default="TMM", help="edgeR norm type"
+    )
+    parser.add_argument(
+        "--edger-trans-type", type=str, default="cpm", help="edgeR trans type"
+    )
+    parser.add_argument(
+        "--edger-model-batch",
+        default=False,
+        action="store_true",
+        help="edgeR model batch",
+    )
     parser.add_argument(
         "--edger-no-log",
         default=False,
@@ -2466,21 +2475,6 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
         help="Wrench z adj",
-    )
-    parser.add_argument(
-        "--wrench-no-log",
-        default=False,
-        action="store_true",
-        help="Wrench no log transform",
-    )
-    parser.add_argument(
-        "--wrench-prior-count", type=float, default=1, help="Wrench prior count"
-    )
-    parser.add_argument(
-        "--limma-no-log",
-        default=False,
-        action="store_true",
-        help="limma no log transform",
     )
     parser.add_argument(
         "--nano-meta-col",
@@ -2972,8 +2966,6 @@ if __name__ == "__main__":
             "mnt_slr_thres",
             "mdt_slr_thres",
             "vrt_slr_thres",
-            "cnt_slr_mcnt",
-            "cnt_slr_msmp",
             "skb_slr_k",
             "log_trf_shift",
             "rfe_slr_step",
@@ -2983,11 +2975,6 @@ if __name__ == "__main__":
         ):
             cv_params[cv_param] = np.sort(cv_param_values, kind="mergesort")
         elif cv_param in (
-            "rna_slr_mb",
-            "rna_trf_nt",
-            "rna_trf_ft",
-            "rna_trf_tt",
-            "rna_trf_mb",
             "nsn_trf_cc",
             "nsn_trf_bg",
             "nsn_trf_bg_t",
@@ -3092,6 +3079,11 @@ if __name__ == "__main__":
             "param_grid": {"threshold": cv_params["crt_slr_thres"]},
             "param_routing": ["feature_meta"],
         },
+        "CountThreshold": {
+            "estimator": CountThreshold(
+                min_count=args.ctr_min_count, min_samples=args.ctr_min_samples
+            )
+        },
         "MeanThreshold": {
             "estimator": MeanThreshold(),
             "param_grid": {"threshold": cv_params["mnt_slr_thres"]},
@@ -3104,13 +3096,6 @@ if __name__ == "__main__":
             "estimator": VarianceThreshold(),
             "param_grid": {"threshold": cv_params["vrt_slr_thres"]},
         },
-        "CountThreshold": {
-            "estimator": CountThreshold(),
-            "param_grid": {
-                "min_count": cv_params["cnt_slr_mcnt"],
-                "min_samples": cv_params["cnt_slr_msmp"],
-            },
-        },
         "EdgeRFilterByExpr": {
             "estimator": EdgeRFilterByExpr(
                 min_count=args.edger_min_count,
@@ -3118,8 +3103,8 @@ if __name__ == "__main__":
                 large_n=args.edger_large_n,
                 min_prop=args.edger_min_prop,
                 is_classif=False,
+                model_batch=args.edger_model_batch,
             ),
-            "param_grid": {"model_batch": cv_params["rna_slr_mb"]},
             "param_routing": ["sample_meta"],
         },
         "NanoStringEndogenousSelector": {
@@ -3159,40 +3144,48 @@ if __name__ == "__main__":
         "RobustScaler": {"estimator": RobustScaler()},
         "StandardScaler": {"estimator": StandardScaler()},
         "DESeq2Normalizer": {
-            "estimator": DESeq2Normalizer(memory=estm_memory),
-            "param_grid": {
-                "norm_type": cv_params["rna_trf_nt"],
-                "fit_type": cv_params["rna_trf_ft"],
-                "trans_type": cv_params["rna_trf_tt"],
-                "model_batch": cv_params["rna_trf_mb"],
-            },
+            "estimator": DESeq2Normalizer(
+                norm_type=args.deseq2_norm_type,
+                fit_type=args.deseq2_fit_type,
+                trans_type=args.deseq2_trans_type,
+                is_classif=False,
+                model_batch=args.deseq2_model_batch,
+                memory=estm_memory,
+            ),
+            "param_routing": ["sample_meta"],
+        },
+        "DESeq2WrenchNormalizer": {
+            "estimator": DESeq2WrenchNormalizer(
+                est_type=args.wrench_est_type,
+                ref_type=args.wrench_ref_type,
+                z_adj=args.wrench_z_adj,
+                fit_type=args.deseq2_fit_type,
+                trans_type=args.deseq2_trans_type,
+                memory=estm_memory,
+            ),
             "param_routing": ["sample_meta"],
         },
         "EdgeRNormalizer": {
             "estimator": EdgeRNormalizer(
+                norm_type=args.edger_norm_type,
+                trans_type=args.edger_trans_type,
                 log=not args.edger_no_log,
                 prior_count=args.edger_prior_count,
                 memory=estm_memory,
             ),
-            "param_grid": {
-                "norm_type": cv_params["rna_trf_nt"],
-                "trans_type": cv_params["rna_trf_tt"],
-            },
-            "param_routing": ["sample_meta"],
+            "param_routing": ["feature_meta"],
         },
-        "WrenchNormalizer": {
-            "estimator": WrenchNormalizer(
+        "EdgeRWrenchNormalizer": {
+            "estimator": EdgeRWrenchNormalizer(
                 est_type=args.wrench_est_type,
                 ref_type=args.wrench_ref_type,
                 z_adj=args.wrench_z_adj,
-                log=not args.wrench_no_log,
-                prior_count=args.wrench_prior_count,
+                trans_type=args.edger_trans_type,
+                log=not args.edger_no_log,
+                prior_count=args.edger_prior_count,
                 memory=estm_memory,
             ),
-            "param_grid": {
-                "trans_type": cv_params["rna_trf_tt"],
-            },
-            "param_routing": ["sample_meta"],
+            "param_routing": ["sample_meta", "feature_meta"],
         },
         "LimmaBatchEffectRemover": {
             "estimator": LimmaBatchEffectRemover(preserve_design=False),
