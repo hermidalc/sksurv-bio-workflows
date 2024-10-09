@@ -16,6 +16,7 @@ dependencies:
   - bioconductor-wrench
   - eli5
   - joblib
+  - libblas=*[build=*openblas]
   - libopenblas
   - lifelines
   - matplotlib
