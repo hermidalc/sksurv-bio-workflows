@@ -46,6 +46,7 @@ from sklearn.model_selection import ParameterGrid, ParameterSampler
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import (
     MinMaxScaler,
+    MaxAbsScaler,
     OneHotEncoder,
     OrdinalEncoder,
     PowerTransformer,
@@ -3141,6 +3142,7 @@ if __name__ == "__main__":
         "MinMaxScaler": {
             "estimator": MinMaxScaler(feature_range=args.mms_trf_feature_range)
         },
+        "MaxAbsScaler": {"estimator": MaxAbsScaler()},
         "RobustScaler": {"estimator": RobustScaler()},
         "StandardScaler": {"estimator": StandardScaler()},
         "DESeq2Normalizer": {
